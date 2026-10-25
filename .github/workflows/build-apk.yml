@@ -28,24 +28,25 @@ jobs:
           KS: ${{ secrets.SK_KEYSTORE_B64 }}
           KP: ${{ secrets.SK_KEYSTORE_PASS }}
         run: |
-          if [ -z "$KS" ]; then
-            echo "::warning::No signing key secret; building with debug key"
-            exit 0
-          fi
-          # ننظف القيمة من أي مسافات أو أسطر زايدة انلصقت بالغلط
-          printf '%s' "$KS" | tr -cd 'A-Za-z0-9+/=' > "$RUNNER_TEMP/ks.b64"
-          if ! base64 -d "$RUNNER_TEMP/ks.b64" > "$RUNNER_TEMP/sk.jks" 2>/dev/null; then
-            echo "::error::SK_KEYSTORE_B64 is not valid base64 (length $(wc -c < "$RUNNER_TEMP/ks.b64"))"
-            exit 1
-          fi
           KP_CLEAN=$(printf '%s' "$KP" | tr -d ' \r\n\t')
-          if ! keytool -list -keystore "$RUNNER_TEMP/sk.jks" -storepass "$KP_CLEAN" >/dev/null 2>&1; then
-            echo "::error::Keystore decoded ($(wc -c < "$RUNNER_TEMP/sk.jks") bytes) but SK_KEYSTORE_PASS does not open it"
-            exit 1
+          ok=0
+          # الطريقة ١: المفتاح كامل في سر SK_KEYSTORE_B64
+          if [ -n "$KS" ]; then
+            printf '%s' "$KS" | tr -cd 'A-Za-z0-9+/=' | base64 -d > "$RUNNER_TEMP/sk.jks" 2>/dev/null || true
+            keytool -list -keystore "$RUNNER_TEMP/sk.jks" -storepass "$KP_CLEAN" >/dev/null 2>&1 && ok=1
           fi
-          echo "SK_KEYSTORE=$RUNNER_TEMP/sk.jks" >> "$GITHUB_ENV"
-          echo "SK_KEYSTORE_PASS=$KP_CLEAN" >> "$GITHUB_ENV"
-          echo "::notice::Signed with the permanent key"
+          # الطريقة ٢: المفتاح مشفّر داخل المستودع، ويكفي سر كلمة المرور
+          if [ "$ok" = 0 ] && [ -n "$KP_CLEAN" ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in android/sekrteery.jks.enc -out "$RUNNER_TEMP/sk.jks" -pass "pass:$KP_CLEAN" 2>/dev/null \
+              && keytool -list -keystore "$RUNNER_TEMP/sk.jks" -storepass "$KP_CLEAN" >/dev/null 2>&1 && ok=1
+          fi
+          if [ "$ok" = 1 ]; then
+            echo "SK_KEYSTORE=$RUNNER_TEMP/sk.jks" >> "$GITHUB_ENV"
+            echo "SK_KEYSTORE_PASS=$KP_CLEAN" >> "$GITHUB_ENV"
+            echo "::notice::Signed with the permanent key"
+          else
+            echo "::warning::Permanent key not available (pass length ${#KP_CLEAN}); building with temporary debug key"
+          fi
 
       - name: Build
         working-directory: android
