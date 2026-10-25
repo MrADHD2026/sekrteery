@@ -1,0 +1,15 @@
+{
+  "name": "سكرتيري",
+  "short_name": "سكرتيري",
+  "description": "مواعيدك ومهامك ومصروفاتك في مكان واحد",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F5F3EE",
+  "theme_color": "#F5F3EE",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

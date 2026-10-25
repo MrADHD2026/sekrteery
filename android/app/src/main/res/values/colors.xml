@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#F5F3EE</color>
+    <color name="teal">#0F5F59</color>
+    <color name="alarm">#A3191C</color>
+    <color name="ic_bg">#0F5F59</color>
+</resources>

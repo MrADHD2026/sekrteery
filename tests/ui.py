@@ -1,0 +1,68 @@
+import asyncio, sys
+from playwright.async_api import async_playwright
+OUT='/home/claude/shots/'
+async def main():
+    async with async_playwright() as p:
+        b = await p.chromium.launch()
+        pg = await b.new_page(viewport={'width':390,'height':844}, device_scale_factor=1, locale='ar-SA', timezone_id='Asia/Riyadh')
+        errs=[]
+        pg.on('console', lambda m: errs.append(m.type+': '+m.text) if m.type in ('error','warning') else None)
+        pg.on('pageerror', lambda e: errs.append('PAGEERR: '+str(e)))
+        await pg.goto('http://localhost:8765/index.html')
+        await pg.wait_for_timeout(500)
+        await pg.screenshot(path=OUT+'1-tasks-empty.png', full_page=True)
+        # add tasks by typing
+        await pg.goto('http://localhost:8765/index.html#/task/new?mode=voice')
+        await pg.wait_for_timeout(300)
+        await pg.fill('textarea[name=vtext]', 'بكرة الساعة عشرة الصبح عندي موعد مهم في المستشفى، وذكرني أسدد فاتورة الكهرباء قبل الخميس، ومهمة عاجلة ارسل التقرير اليوم الساعة 11 بالليل')
+        await pg.click('[data-act=parse]')
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'2-task-voice.png', full_page=True)
+        await pg.click('[data-act=edit-draft][data-i="0"]')
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'3-sheet.png')
+        await pg.click('[data-act=sheet-save]')
+        await pg.click('[data-act=save-drafts]')
+        await pg.wait_for_timeout(400)
+        # past item to show missed
+        await pg.evaluate("""() => { const d=new Date(); d.setHours(d.getHours()-3); SK.store.putItem({type:'task',title:'الاتصال بالمؤجر',level:'important',due:d.getTime(),timeSet:true,before:0,repeat:'none',done:false}); const e=new Date(); e.setHours(e.getHours()-1); const x=SK.store.putItem({type:'appointment',title:'صيانة السيارة',level:'important',due:e.getTime(),timeSet:true,before:0,repeat:'none'}); SK.store.completeItem(x.id); }""")
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'4-tasks.png', full_page=True)
+        # manual task
+        await pg.goto('http://localhost:8765/index.html#/task/new?mode=manual')
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'5-task-manual.png', full_page=True)
+        # money voice
+        await pg.goto('http://localhost:8765/index.html#/tx/new?mode=voice')
+        await pg.wait_for_timeout(300)
+        await pg.fill('textarea[name=vtext]', 'استلمت الراتب عشرة آلاف، وخصم البنك القرض الشخصي ستة آلاف، والقرض العقاري ألفين، واشتريت مقاضي بمية دولار')
+        await pg.click('[data-act=parse]')
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'6-tx-voice.png', full_page=True)
+        await pg.click('[data-act=save-drafts]')
+        await pg.wait_for_timeout(300)
+        await pg.goto('http://localhost:8765/index.html#/tx/new?mode=manual')
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'7-tx-manual.png', full_page=True)
+        await pg.fill('input[name=amount]','90'); await pg.click('.chip[data-group=cat][data-val=fuel]')
+        await pg.click('[data-act=save-manual]')
+        await pg.wait_for_timeout(300)
+        await pg.evaluate("()=>{const c=SK.store.category('groceries'); c.budget=450; SK.store.putSettings({});}")
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'8-money.png', full_page=True)
+        await pg.goto('http://localhost:8765/index.html#/settings')
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'9-settings.png', full_page=True)
+        # web alarm
+        await pg.goto('http://localhost:8765/index.html#/tasks')
+        await pg.evaluate("()=>SK.app.showWebAlarm({id:'test',title:'موعد صيانة السيارة',header:'اطلع الحين',body:'موعد الساعة 9:00 ص · باقي 30 دقيقة',level:'urgent'})")
+        await pg.wait_for_timeout(300)
+        await pg.screenshot(path=OUT+'10-alarm.png')
+        # desktop
+        pg2 = await b.new_page(viewport={'width':1366,'height':900}, locale='ar-SA', timezone_id='Asia/Riyadh')
+        await pg2.goto('http://localhost:8765/index.html')
+        await pg2.wait_for_timeout(300)
+        await pg2.screenshot(path=OUT+'11-desktop.png', full_page=True)
+        print('\n'.join(errs) or 'no errors')
+        await b.close()
+asyncio.run(main())
