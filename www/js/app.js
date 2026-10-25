@@ -17,6 +17,7 @@
     chevL: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
     chevR: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
     edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
     cloud: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/></svg>'
   };
 
@@ -79,7 +80,7 @@
   function itemRow(it, opts) {
     const now = Date.now();
     const missed = isMissed(it, now);
-    const meta = [SK.TYPE_NAMES[it.type], SK.LEVEL_NAMES[it.level || 'normal'], opts && opts.showDay ? U.dayRel(it.due) : null, it.repeat && it.repeat !== 'none' ? SK.REPEAT_NAMES[it.repeat] : null, it.money ? 'مرتبطة بالمالية' : null].filter(Boolean).join(' · ');
+    const meta = [SK.TYPE_NAMES[it.type], SK.LEVEL_NAMES[it.level || 'normal'], opts && opts.showDay ? U.dayRel(it.due) : null, it.repeat && it.repeat !== 'none' ? SK.REPEAT_NAMES[it.repeat] : null, it.money ? 'مرتبطة بالمالية' : null, it.place ? '📍 ' + it.place.name : null].filter(Boolean).join(' · ');
     return `<div class="row-item ${it.done ? 'done' : ''} lvl-${it.level || 'normal'}">
       <button type="button" class="tick" data-act="toggle-done" data-id="${it.id}" aria-label="${it.done ? 'رجّعها غير منجزة' : 'تم'}" aria-pressed="${!!it.done}">${I.check}</button>
       <a class="row-main" href="#/task/${it.id}">
@@ -113,7 +114,7 @@
     });
 
     const perms = N.isApp ? N.permissions() : null;
-    const permMissing = perms && ['notifications', 'exactAlarm', 'fullScreen', 'overlay', 'battery'].some(k => perms[k] === false);
+    const permMissing = !!perms && (['notifications', 'exactAlarm', 'fullScreen', 'overlay', 'battery'].some(k => perms[k] === false) || ((perms.location === false || perms.bgLocation === false) && S.activeItems().some(i => i.place && !i.done)));
 
     return `${header('سكرتيري')}
     <main class="wrap">
@@ -260,10 +261,21 @@
         <label class="field"><span class="lbl">نبهني قبل</span><select name="before">${BEFORE_OPTS.map(m => `<option value="${m}" ${(+it.before || 0) === m ? 'selected' : ''}>${m ? SK.beforeText(m) : 'في الوقت نفسه'}</option>`).join('')}</select></label>
         <label class="field"><span class="lbl">التكرار</span><select name="repeat">${Object.keys(SK.REPEAT_NAMES).map(k => `<option value="${k}" ${(it.repeat || 'none') === k ? 'selected' : ''}>${SK.REPEAT_NAMES[k]}${k === 'monthly' ? ' (مثل الفواتير)' : ''}</option>`).join('')}</select></label>
       </div>
+      <div class="field"><span class="lbl">المكان (اختياري)</span>
+        <input type="hidden" name="plat" value="${it.place ? it.place.lat : ''}"><input type="hidden" name="plng" value="${it.place ? it.place.lng : ''}"><input type="hidden" name="pname" value="${esc(it.place ? it.place.name : '')}">
+        <div data-slot="place">${placeChip(it.place)}</div>
+        <small class="muted">لو حددت المكان، الجوال يحسب وقت الطريق من موقعك ويطلع لك "اطلع الحين" في وقته</small>
+      </div>
+      <label class="field"><span class="lbl">"اطلع الحين" قبل الموعد بـ</span><select name="leaveBuffer">${[5, 10, 15, 20, 30].map(m => `<option value="${m}" ${(it.leaveBuffer != null ? +it.leaveBuffer : 15) === m ? 'selected' : ''}>${m} دقيقة زيادة على وقت الطريق</option>`).join('')}</select></label>
       <div class="field"><span class="lbl">قوة التنبيه</span>${chips('strength', [{ v: 'normal', t: 'عادي' }, { v: 'strong', t: 'قوي' }, { v: 'repeat', t: 'قوي ومتكرر', cls: 'red-on' }], strength)}</div>
       <label class="field"><span class="lbl">مرتبطة بالمالية؟</span><select name="money"><option value="">لا</option>${cats.map(c => `<option value="${c.id}" ${it.money === c.id ? 'selected' : ''}>نعم، لما أخلصها سجّلها في: ${esc(c.name)}</option>`).join('')}</select></label>
       <label class="field"><span class="lbl">ملاحظة (اختياري)</span><input name="note" type="text" value="${esc(it.note || '')}" placeholder="مثلاً: خذ الأوراق معك"></label>
     </form>`;
+  }
+  function placeChip(p) {
+    if (!p || p.lat == null) return `<button type="button" class="btn-sm outline" data-act="place-open">${I.pin} حدد المكان</button>`;
+    return `<div class="place-chip">${I.pin}<span class="grow"><b>${esc(p.name || 'المكان')}</b><small data-slot="eta">${p.eta ? esc(p.eta) : ''}</small></span>
+      <button type="button" class="btn-sm outline" data-act="place-open">تغيير</button><button type="button" class="btn-icon" data-act="place-clear" aria-label="شيل المكان">${I.x}</button></div>`;
   }
   function readTaskForm(root, base) {
     const f = $('form[data-form="task"]', root);
@@ -273,7 +285,9 @@
     return Object.assign({}, base || {}, {
       type: chipVal(f, 'type') || 'task', level: chipVal(f, 'level') || 'normal', strength: chipVal(f, 'strength') || 'normal',
       title, due: U.fromInputs(f.date.value || U.inputDate(Date.now()), ts || '09:00'), timeSet: !!ts,
-      before: +f.before.value || 0, repeat: f.repeat.value, money: f.money.value || null, note: f.note.value.trim()
+      before: +f.before.value || 0, repeat: f.repeat.value, money: f.money.value || null, note: f.note.value.trim(),
+      place: f.plat.value ? { lat: +f.plat.value, lng: +f.plng.value, name: f.pname.value } : null,
+      leaveBuffer: +f.leaveBuffer.value || 15
     });
   }
   function catChips(kind, value) {
@@ -319,8 +333,9 @@
           <li class="${d.level === 'urgent' ? 'red' : d.level === 'important' ? 'orange' : ''}">التنبيه: ${esc(s)}${(d.strength || SK.LEVEL_STRENGTH[d.level]) !== 'normal' ? ' (شاشة كاملة)' : ''}</li>
           ${d.repeat && d.repeat !== 'none' ? `<li>يتكرر: ${esc(SK.REPEAT_NAMES[d.repeat])}</li>` : ''}
           ${d.money ? `<li>مرتبطة بالمالية: لما تخلصها تنسجل مصروف</li>` : ''}
+          ${d.place ? `<li>📍 ${esc(d.place.name)}: "اطلع الحين" حسب وقت الطريق من موقعك</li>` : ''}
         </ul>
-        <div class="draft-acts"><button type="button" class="btn-sm outline" data-act="edit-draft" data-i="${i}">${I.edit} تعديل</button><button type="button" class="btn-icon" data-act="drop-draft" data-i="${i}" aria-label="احذف">${I.x}</button></div>
+        <div class="draft-acts"><button type="button" class="btn-sm outline" data-act="edit-draft" data-i="${i}">${I.edit} تعديل</button>${d.type !== 'task' && !d.place ? `<button type="button" class="btn-sm outline" data-act="place-open" data-i="${i}">${I.pin} حدد المكان</button>` : ''}<button type="button" class="btn-icon" data-act="drop-draft" data-i="${i}" aria-label="احذف">${I.x}</button></div>
       </div>`;
     }
     const c = S.category(d.categoryId);
@@ -398,7 +413,9 @@
     { k: 'exactAlarm', t: 'المنبه الدقيق', d: 'التنبيه يجي في الدقيقة بالضبط، مو متأخر' },
     { k: 'fullScreen', t: 'الشاشة الكاملة', d: 'التنبيه المهم والعاجل يطلع على الشاشة كاملة حتى لو الجوال مقفل' },
     { k: 'overlay', t: 'الظهور فوق التطبيقات', d: 'يطلع لك التنبيه في وجهك حتى وأنت داخل تطبيق ثاني' },
-    { k: 'battery', t: 'بدون قيود البطارية', d: 'عشان سامسونج ما يقفل التطبيق ويضيع التنبيهات' }
+    { k: 'battery', t: 'بدون قيود البطارية', d: 'عشان سامسونج ما يقفل التطبيق ويضيع التنبيهات' },
+    { k: 'location', t: 'الموقع', d: 'عشان يحسب وقت الطريق للموعد من مكانك' },
+    { k: 'bgLocation', t: 'الموقع طوال الوقت', d: 'يحسب الطريق حتى والتطبيق مقفل. اختر "السماح طوال الوقت"' }
   ];
   function viewSettings() {
     const sy = SK.sync;
@@ -430,6 +447,12 @@
           <button type="button" class="btn-sm outline" data-act="test" data-s="strong">قوي</button>
           <button type="button" class="btn-sm red" data-act="test" data-s="repeat">قوي ومتكرر</button>
         </div>
+      </section>
+      <section class="card">
+        <h2>${I.pin} خرائط جوجل (اختياري)</h2>
+        <p class="muted">بدون مفتاح: البحث من OpenStreetMap ووقت الطريق تقديري (بدون زحمة مباشرة، ونضيف عليه ٣٠٪). مع مفتاح خرائط جوجل: وقت الطريق بالزحمة الحقيقية والبحث أدق.</p>
+        <label class="field"><span class="lbl">مفتاح Google Maps API</span><input name="mapsKey" type="text" dir="ltr" value="${esc(S.settings.mapsKey || '')}" placeholder="AIza..."></label>
+        <button type="button" class="btn-sm" data-act="save-maps">حفظ</button>
       </section>
       <section class="card">
         <h2>المزامنة بين أجهزتك</h2>
@@ -505,6 +528,15 @@
       body = `<h2>كم دفعت؟</h2><p class="muted">${esc(it.title)}</p>${txForm({ kind: S.category(it.money).kind === 'deduction' ? 'deduction' : 'expense', categoryId: it.money, title: it.title })}
         <button type="button" class="btn primary big" data-act="money-link-save">سجّل المصروف</button><button type="button" class="btn ghost" data-act="sheet-close">تخطي</button>`;
     }
+    if (sh.type === 'place') {
+      const res = sh.results || [];
+      body = `<h2>${I.pin} حدد المكان</h2>
+        <div class="search-row"><input name="pq" type="text" value="${esc(sh.q || '')}" placeholder="مثلاً: مدينة الملك عبدالله الطبية مكة"><button type="button" class="btn-sm" data-act="place-search">بحث</button></div>
+        <div class="two"><button type="button" class="btn-sm outline" data-act="place-here">موقعي الحالي</button><button type="button" class="btn-sm outline" data-act="place-link">رابط من خرائط جوجل</button></div>
+        ${sh.busy ? '<p class="muted center">جاري البحث...</p>' : ''}${sh.err ? `<p class="err-msg">${esc(sh.err)}</p>` : ''}
+        <div class="results">${res.map((r, k) => `<button type="button" class="result" data-act="place-pick" data-k="${k}"><b>${esc(r.name)}</b><small>${esc(r.address)}</small></button>`).join('')}</div>
+        ${res.length ? `<small class="muted">${res[0].src === 'google' ? 'النتائج من خرائط جوجل' : 'النتائج من OpenStreetMap. لو ما لقيت المكان، الصق رابطه من خرائط جوجل'}</small>` : ''}`;
+    }
     if (sh.type === 'new-cat') {
       body = `<h2>بند جديد</h2><label class="field"><span class="lbl">اسم البند</span><input name="catname" type="text" placeholder="مثلاً: الجيم"></label><button type="button" class="btn primary big" data-act="new-cat-save">أضف</button>`;
     }
@@ -565,6 +597,28 @@
     const p = spent / c.budget, p0 = before / c.budget;
     if (p >= 1 && p0 < 1) { toast(`تجاوزت ميزانية ${c.name} لهالشهر!`, 'err'); N.notify('تجاوزت الميزانية', `صرفت ${U.money(spent)} من ${U.money(c.budget)} ريال في ${c.name}`); }
     else if (p >= 0.8 && p0 < 0.8) { toast(`انتبه: صرفت ${Math.round(p * 100)}% من ميزانية ${c.name}`, 'warn'); N.notify('قربت تخلص الميزانية', `صرفت ${Math.round(p * 100)}% من ميزانية ${c.name}`); }
+  }
+  function setPlace(p) {
+    const sh = st.sheet;
+    if (typeof sh.target === 'number') {
+      const d = st.voice.drafts[sh.target]; d.place = p;
+      if (d.type === 'task') d.type = 'appointment';
+      d.before = 0; // "اطلع الحين" يغني عن التذكير الثابت
+      st.sheet = sh.prev && sh.prev.type === 'edit-draft' ? sh.prev : null;
+      if (st.sheet) renderSheet(); else render();
+    } else {
+      st.sheet = null; renderSheet();
+      const f = $('#app form[data-form="task"]');
+      if (f) { f.plat.value = p.lat; f.plng.value = p.lng; f.pname.value = p.name; $('[data-slot="place"]', f).innerHTML = placeChip(p); }
+    }
+    toast('تم تحديد المكان', 'ok');
+    showEta(p);
+  }
+  function showEta(p) {
+    SK.geo.travel(p.lat, p.lng).then(r => {
+      const txt = `الطريق من موقعك الحين تقريباً ${r.minutes} دقيقة${r.km ? ' (' + r.km + ' كم)' : ''}${r.src === 'osm' ? ' · تقديري بدون زحمة مباشرة' : ''}`;
+      $$('[data-slot="eta"]').forEach(e => e.textContent = txt);
+    }).catch(() => { $$('[data-slot="eta"]').forEach(e => e.textContent = 'ما قدرت أحسب الطريق الحين (فعّل الموقع)'); });
   }
   function afterDone(it) { if (it && it.done && it.money) { st.sheet = { type: 'money-link', id: it.id }; renderSheet(); } }
 
@@ -643,6 +697,43 @@
     'resched-at'(d) { S.rescheduleItem(st.sheet.id, +d.at); st.sheet = null; toast('تمت الجدولة', 'ok'); render(); },
     'resched-custom'() { const r = $('#sheet'); S.rescheduleItem(st.sheet.id, U.fromInputs($('[name="rdate"]', r).value, $('[name="rtime"]', r).value)); st.sheet = null; toast('تمت الجدولة', 'ok'); render(); },
     'money-link-save'() { const t = readTxForm($('#sheet')); if (!t) return; budgetCheck(S.putTx(t)); st.sheet = null; toast('انسجل في المالية', 'ok'); render(); },
+    'place-open'(d) {
+      let target = 'form', q = '';
+      if (st.sheet && st.sheet.type === 'edit-draft') {
+        // نحفظ اللي انكتب في نافذة التعديل قبل ما نفتح البحث
+        const v = readTaskForm($('#sheet'), st.voice.drafts[st.sheet.i]); if (v) st.voice.drafts[st.sheet.i] = v;
+        target = st.sheet.i; q = st.voice.drafts[target].title;
+      } else if (d.i != null) {
+        st.voice.text = readVoiceText(); target = +d.i; q = st.voice.drafts[target].title;
+      } else {
+        const form = $('#app form[data-form="task"]'); q = form ? form.title.value : '';
+      }
+      st.sheet = { type: 'place', target, q, results: [], prev: st.sheet };
+      renderSheet(); if (q) actions['place-search']();
+    },
+    async 'place-search'() {
+      const sh = st.sheet; const inp = $('#sheet [name="pq"]'); sh.q = inp ? inp.value : sh.q;
+      sh.busy = true; sh.err = ''; renderSheet();
+      try { sh.results = await SK.geo.search(sh.q); if (!sh.results.length) sh.err = 'ما لقيت نتائج. جرب اسم ثاني أو الصق رابط من خرائط جوجل'; }
+      catch (e) { sh.err = 'ما قدرت أبحث، تأكد من الإنترنت'; }
+      sh.busy = false; if (st.sheet === sh) renderSheet();
+    },
+    async 'place-here'() {
+      const sh = st.sheet; sh.busy = true; sh.err = ''; renderSheet();
+      try { const p = await SK.geo.here(); setPlace({ name: 'موقعي الحالي', lat: p.lat, lng: p.lng }); }
+      catch (e) { sh.busy = false; sh.err = 'ما قدرت أحدد موقعك: ' + e.message; renderSheet(); }
+    },
+    async 'place-link'() {
+      const url = prompt('الصق رابط المكان من خرائط جوجل (من زر "مشاركة"):'); if (!url) return;
+      const sh = st.sheet;
+      try { setPlace(await SK.geo.fromLink(url)); } catch (e) { sh.err = e.message; renderSheet(); }
+    },
+    'place-pick'(d) { const r = st.sheet.results[+d.k]; setPlace({ name: r.name, lat: r.lat, lng: r.lng }); },
+    'place-clear'(d, el) {
+      const f = el.closest('form'); if (!f) return;
+      if (f.closest('#sheet') && st.sheet && st.sheet.type === 'edit-draft') { st.voice.drafts[st.sheet.i].place = null; }
+      f.plat.value = ''; f.plng.value = ''; f.pname.value = ''; $('[data-slot="place"]', f).innerHTML = placeChip(null);
+    },
     'money-prev'() { st.moneyOffset--; render(); },
     'money-next'() { if (st.moneyOffset < 0) st.moneyOffset++; render(); },
     'toggle-alltx'() { st.showAllTx = !st.showAllTx; render(); },
@@ -658,6 +749,7 @@
     'sync-new'(d, el) { return actions['sync-in'](d, el, null, true); },
     async 'sync-reset'() { const email = $('[name="email"]').value.trim(); if (!email) { toast('اكتب الإيميل أول', 'err'); return; } try { await SK.sync.resetPassword(email); toast('أرسلنا رابط لإيميلك', 'ok'); } catch (e) { toast(authErr(e), 'err'); } },
     async 'sync-out'() { await SK.sync.signOut(); render(); },
+    'save-maps'() { S.putSettings({ mapsKey: $('[name="mapsKey"]').value.trim() }); N.setConfig({ mapsKey: S.settings.mapsKey }); toast('تم الحفظ', 'ok'); },
     'save-budgets'() {
       $$('[data-budget]').forEach(i => { const c = S.category(i.dataset.budget); if (c) c.budget = Math.max(0, +i.value || 0); });
       S.putSettings({}); toast('تم حفظ الميزانية', 'ok');
@@ -739,6 +831,7 @@
   S.onChange((kind, doc) => {
     if (kind === 'item' || kind === 'tx' || kind === 'settings') SK.sync.push(kind, doc);
     if (kind === 'item' || kind === 'remote' || kind === 'import') pushAlarms();
+    if (kind === 'remote' || kind === 'settings') N.setConfig({ mapsKey: S.settings.mapsKey || '' });
     if (kind === 'remote' && isFormRoute()) return; // لا نمسح اللي تكتبه
     if (!st.sheet || kind !== 'remote') render();
   });
@@ -756,6 +849,7 @@
   // نحدّث تنبيهات العناصر القديمة (لو تغيّر شي في الحساب)
   render();
   pushAlarms();
+  N.setConfig({ mapsKey: S.settings.mapsKey || '' });
   SK.sync.init();
   setInterval(() => { if (!isFormRoute() && !st.sheet && document.visibilityState === 'visible') render(); }, 60e3);
   if ('serviceWorker' in navigator && !N.isApp && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });

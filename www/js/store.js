@@ -116,8 +116,16 @@
         out.push(Object.assign({}, base, { key: it.id + ':s', at: it.snoozeUntil, strength, header: 'تذكير مؤجَّل', body: typeName + (when ? ' الساعة ' + when : '') }));
         return out;
       }
+      // موعد له مكان: الجوال يحسب وقت الطريق من موقعك ويطلع "اطلع الحين" في وقته
+      if (it.place && it.place.lat != null && it.due > Date.now()) {
+        out.push(Object.assign({}, base, {
+          key: it.id + ':trv', kind: 'travel', at: it.due - 3 * 3600e3, due: it.due, strength: strength === 'normal' ? 'strong' : strength,
+          lat: it.place.lat, lng: it.place.lng, place: it.place.name || '', buffer: it.leaveBuffer != null ? +it.leaveBuffer : 15,
+          header: 'اطلع الحين', body: typeName + ' الساعة ' + U.time(it.due) + (it.place.name ? ' · ' + it.place.name : '')
+        }));
+      }
       if (before > 0) {
-        const leave = it.type === 'appointment' || it.type === 'event';
+        const leave = (it.type === 'appointment' || it.type === 'event') && !(it.place && it.place.lat != null);
         out.push(Object.assign({}, base, {
           key: it.id + ':pre', at: it.due - before * 6e4, strength,
           header: leave ? 'اطلع الحين' : 'باقي ' + beforeText(before),
@@ -132,7 +140,7 @@
     upcomingAlarms() {
       const now = Date.now() - 6e4;
       const out = [];
-      S.activeItems().forEach(it => { try { JSON.parse(it.nat || '[]').forEach(a => { if (a.at > now) out.push(a); }); } catch (e) { } });
+      S.activeItems().forEach(it => { try { JSON.parse(it.nat || '[]').forEach(a => { if ((a.kind === 'travel' ? a.due : a.at) > now) out.push(a); }); } catch (e) { } });
       return out.sort((a, b) => a.at - b.at).slice(0, 200);
     },
 

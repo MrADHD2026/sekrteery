@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
     static final String HOST = "appassets.androidplatform.net";
     private static final int REQ_VOICE = 701;
     private static final int REQ_NOTIF = 702;
+    private static final int REQ_LOC = 703;
 
     private WebView web;
     private String voiceCb;
@@ -56,7 +57,13 @@ public class MainActivity extends Activity {
         s.setTextZoom(100);
         WebView.setWebContentsDebuggingEnabled(true);
         web.setBackgroundColor(0xFFF5F3EE);
-        web.setWebChromeClient(new WebChromeClient());
+        s.setGeolocationEnabled(true);
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(String origin, android.webkit.GeolocationPermissions.Callback cb) {
+                cb.invoke(origin, Travel.hasLocationPerm(MainActivity.this), false);
+            }
+        });
         web.setWebViewClient(new LocalClient());
         web.addJavascriptInterface(new Bridge(), "SKNative");
         setContentView(web);
@@ -195,6 +202,8 @@ public class MainActivity extends Activity {
                 o.put("overlay", Settings.canDrawOverlays(c));
                 PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
                 o.put("battery", pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()));
+                o.put("location", Travel.hasLocationPerm(c));
+                o.put("bgLocation", Build.VERSION.SDK_INT < 29 || checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED);
             } catch (Exception ignored) {}
             return o.toString();
         }
@@ -220,6 +229,22 @@ public class MainActivity extends Activity {
                         break;
                     case "overlay":
                         i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg);
+                        break;
+                    case "location":
+                        if (!Travel.hasLocationPerm(c)) {
+                            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOC);
+                            return;
+                        }
+                        break;
+                    case "bgLocation":
+                        if (!Travel.hasLocationPerm(c)) {
+                            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION}, REQ_LOC);
+                            return;
+                        }
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            requestPermissions(new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION}, REQ_LOC);
+                            return;
+                        }
                         break;
                     case "battery":
                         i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg);
@@ -257,5 +282,56 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public String takeActions() { return AlarmStore.takeActions(c); }
+
+        @JavascriptInterface public void setConfig(String json) {
+            AlarmStore.prefs(c).edit().putString("config", json == null ? "{}" : json).apply();
+        }
+
+        private void geoReply(String id, JSONObject o) {
+            runOnUiThread(() -> { if (web != null) web.evaluateJavascript("window.SKBridge && SKBridge.onGeo(" + JSONObject.quote(id) + "," + JSONObject.quote(o.toString()) + ")", null); });
+        }
+
+        @JavascriptInterface public void travelTime(String lat, String lng, String id) {
+            new Thread(() -> geoReply(id, Travel.estimate(c, Double.parseDouble(lat), Double.parseDouble(lng)))).start();
+        }
+
+        @JavascriptInterface public void getLocation(String id) {
+            new Thread(() -> {
+                JSONObject o = new JSONObject();
+                try {
+                    if (!Travel.hasLocationPerm(c)) o.put("error", "فعّل صلاحية الموقع من الإعدادات");
+                    else {
+                        android.location.Location l = Travel.location(c, 15_000L);
+                        if (l == null) o.put("error", "تأكد إن الموقع (GPS) شغّال");
+                        else { o.put("lat", l.getLatitude()); o.put("lng", l.getLongitude()); }
+                    }
+                } catch (Exception ignored) {}
+                geoReply(id, o);
+            }).start();
+        }
+
+        @JavascriptInterface public void resolveUrl(String url, String id) {
+            new Thread(() -> {
+                JSONObject o = new JSONObject();
+                try {
+                    String cur = url;
+                    for (int i = 0; i < 6; i++) {
+                        java.net.HttpURLConnection h = (java.net.HttpURLConnection) new java.net.URL(cur).openConnection();
+                        h.setInstanceFollowRedirects(false);
+                        h.setConnectTimeout(8000); h.setReadTimeout(8000);
+                        h.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14)");
+                        int code = h.getResponseCode();
+                        String loc = h.getHeaderField("Location");
+                        h.disconnect();
+                        if (code >= 300 && code < 400 && loc != null) cur = new java.net.URL(new java.net.URL(cur), loc).toString();
+                        else break;
+                    }
+                    o.put("url", cur);
+                } catch (Exception e) {
+                    try { o.put("url", url); } catch (Exception ignored) {}
+                }
+                geoReply(id, o);
+            }).start();
+        }
     }
 }

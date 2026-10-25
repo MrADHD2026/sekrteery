@@ -93,7 +93,8 @@ final class CloudSync {
                 JSONArray al = new JSONArray(nat);
                 for (int k = 0; k < al.length(); k++) {
                     JSONObject a = al.getJSONObject(k);
-                    if (a.optLong("at") > now - 60_000L) out.put(a);
+                    long t = "travel".equals(a.optString("kind")) ? a.optLong("due") : a.optLong("at");
+                    if (t > now - 60_000L) out.put(a);
                 }
             } catch (Exception ignored) {}
         }

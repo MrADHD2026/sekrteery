@@ -63,7 +63,8 @@
     setSyncCredentials(o) { if (A) try { A.setSyncCredentials(JSON.stringify(o || {})); } catch (e) { } },
     // ---- الأوامر اللي سواها المستخدم من شاشة المنبه
     takeActions() { if (!A) return []; try { return JSON.parse(A.takeActions() || '[]'); } catch (e) { return []; } },
+    setConfig(o) { if (A && A.setConfig) try { A.setConfig(JSON.stringify(o || {})); } catch (e) { } },
     version() { if (A) try { return A.version(); } catch (e) { } return 'web'; }
   };
-  window.SKBridge = { onVoice: N.onVoice, onResume: () => SK.app && SK.app.onResume() };
+  window.SKBridge = Object.assign(window.SKBridge || {}, { onVoice: N.onVoice, onResume: () => SK.app && SK.app.onResume() });
 })();

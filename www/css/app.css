@@ -221,3 +221,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--teal); outl
 .wa-sn { min-height: 56px; border: 2px solid rgba(255, 255, 255, .7); border-radius: 16px; background: transparent; color: #fff; font-size: 17px; font-weight: 600; }
 
 .credit { text-align: center; font-size: 12px; font-weight: 600; letter-spacing: .3px; color: var(--muted); padding: 8px 0 4px; }
+
+.place-chip { display: flex; align-items: center; gap: 10px; background: var(--card); border: 1.5px solid var(--chip-line); border-radius: 12px; padding: 8px 10px; }
+.place-chip .grow { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.place-chip small { color: var(--teal-d); font-size: 13px; }
+.place-chip .btn-icon { margin: 0; }
+.search-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.results { display: flex; flex-direction: column; gap: 8px; }
+.result { text-align: start; border: 1.5px solid var(--chip-line); background: var(--card); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.result small { color: var(--muted); font-size: 12px; }

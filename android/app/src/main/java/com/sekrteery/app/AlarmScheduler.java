@@ -32,7 +32,13 @@ final class AlarmScheduler {
             JSONObject a = main.optJSONObject(i);
             if (a == null) continue;
             long at = a.optLong("at");
-            if (at < now - 60_000L) continue;
+            if ("travel".equals(a.optString("kind"))) {
+                long due = a.optLong("due");
+                if (due <= now) continue;
+                // فحص الطريق لهذا الموعد صار من قبل (والفحوص الجاية محفوظة محلياً)
+                if (AlarmStore.prefs(c).getLong("trvfired_" + a.optString("id"), 0) == due) continue;
+                if (at < now) { try { a.put("at", now + 5000L); } catch (Exception ignored) {} }
+            } else if (at < now - 60_000L) continue;
             // لو المستخدم ضغط "تم" أو "أجّل" من شاشة المنبه بعد ما انحسبت هذي القائمة، نتجاهله
             long h = handled.optLong(a.optString("id"), 0);
             if (h > 0 && !a.optString("key").endsWith(":s")) continue;
@@ -73,7 +79,7 @@ final class AlarmScheduler {
         long at = Math.max(a.optLong("at"), System.currentTimeMillis() + 2000L);
         PendingIntent pi = pending(c, key, a.toString());
         boolean exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms();
-        boolean strong = !"normal".equals(a.optString("strength"));
+        boolean strong = !"normal".equals(a.optString("strength")) && !"travel".equals(a.optString("kind"));
         try {
             if (exact && strong) {
                 Intent show = new Intent(c, MainActivity.class);

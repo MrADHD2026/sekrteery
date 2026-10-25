@@ -17,6 +17,17 @@ public class AlarmReceiver extends BroadcastReceiver {
         if (json == null) return;
         JSONObject a;
         try { a = new JSONObject(json); } catch (Exception e) { return; }
+        if ("travel".equals(a.optString("kind"))) {
+            final JSONObject ta = a;
+            AlarmStore.removeFollowKey(c, a.optString("key"));
+            final PendingResult pr = goAsync();
+            final Context app = c.getApplicationContext();
+            new Thread(() -> {
+                try { Travel.check(app, ta); } catch (Exception ignored) {}
+                finally { pr.finish(); }
+            }).start();
+            return;
+        }
         fire(c, a);
     }
 
