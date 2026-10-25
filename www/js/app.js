@@ -538,6 +538,8 @@
     else if (r.name === 'settings') html = viewSettings();
     else { html = viewTasks(); }
     app.innerHTML = html;
+    const mainEl = $('main', app);
+    if (mainEl) mainEl.insertAdjacentHTML('beforeend', '<footer class="credit" dir="ltr">Powered by Mr_ADHD</footer>');
     try { localStorage.setItem('sk_settings', JSON.stringify(S.settings)); } catch (e) { }
     renderSheet();
   }
