@@ -26,18 +26,30 @@ jobs:
       - name: Signing key
         env:
           KS: ${{ secrets.SK_KEYSTORE_B64 }}
+          KP: ${{ secrets.SK_KEYSTORE_PASS }}
         run: |
-          if [ -n "$KS" ]; then
-            echo "$KS" | base64 -d > "$RUNNER_TEMP/sk.jks"
-            echo "SK_KEYSTORE=$RUNNER_TEMP/sk.jks" >> "$GITHUB_ENV"
-          else
+          if [ -z "$KS" ]; then
             echo "::warning::No signing key secret; building with debug key"
+            exit 0
           fi
+          # ننظف القيمة من أي مسافات أو أسطر زايدة انلصقت بالغلط
+          printf '%s' "$KS" | tr -cd 'A-Za-z0-9+/=' > "$RUNNER_TEMP/ks.b64"
+          if ! base64 -d "$RUNNER_TEMP/ks.b64" > "$RUNNER_TEMP/sk.jks" 2>/dev/null; then
+            echo "::error::SK_KEYSTORE_B64 is not valid base64 (length $(wc -c < "$RUNNER_TEMP/ks.b64"))"
+            exit 1
+          fi
+          KP_CLEAN=$(printf '%s' "$KP" | tr -d ' \r\n\t')
+          if ! keytool -list -keystore "$RUNNER_TEMP/sk.jks" -storepass "$KP_CLEAN" >/dev/null 2>&1; then
+            echo "::error::Keystore decoded ($(wc -c < "$RUNNER_TEMP/sk.jks") bytes) but SK_KEYSTORE_PASS does not open it"
+            exit 1
+          fi
+          echo "SK_KEYSTORE=$RUNNER_TEMP/sk.jks" >> "$GITHUB_ENV"
+          echo "SK_KEYSTORE_PASS=$KP_CLEAN" >> "$GITHUB_ENV"
+          echo "::notice::Signed with the permanent key"
 
       - name: Build
         working-directory: android
         env:
-          SK_KEYSTORE_PASS: ${{ secrets.SK_KEYSTORE_PASS }}
           VERSION_CODE: ${{ github.run_number }}
         run: gradle assembleRelease --no-daemon --stacktrace
 
