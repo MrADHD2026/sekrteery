@@ -698,6 +698,8 @@
     'resched-custom'() { const r = $('#sheet'); S.rescheduleItem(st.sheet.id, U.fromInputs($('[name="rdate"]', r).value, $('[name="rtime"]', r).value)); st.sheet = null; toast('تمت الجدولة', 'ok'); render(); },
     'money-link-save'() { const t = readTxForm($('#sheet')); if (!t) return; budgetCheck(S.putTx(t)); st.sheet = null; toast('انسجل في المالية', 'ok'); render(); },
     'place-open'(d) {
+      // يطلب صلاحية الموقع أول ما تحدد مكان
+      if (N.isApp) { const pm = N.permissions(); if (pm.location === false) N.requestPermission('location'); }
       let target = 'form', q = '';
       if (st.sheet && st.sheet.type === 'edit-draft') {
         // نحفظ اللي انكتب في نافذة التعديل قبل ما نفتح البحث

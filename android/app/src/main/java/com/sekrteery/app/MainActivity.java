@@ -71,9 +71,15 @@ public class MainActivity extends Activity {
         if (b != null) web.restoreState(b);
         else web.loadUrl("https://" + HOST + "/index.html");
 
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_NOTIF);
+        // أول ما يفتح: يطلب الإشعارات والموقع مع بعض
+        java.util.List<String> need = new java.util.ArrayList<>();
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            need.add(Manifest.permission.POST_NOTIFICATIONS);
+        if (!Travel.hasLocationPerm(this)) {
+            need.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            need.add(Manifest.permission.ACCESS_COARSE_LOCATION);
         }
+        if (!need.isEmpty()) requestPermissions(need.toArray(new String[0]), REQ_NOTIF);
         AlarmScheduler.rescheduleAll(this);
         if (AlarmStore.creds(this) != null) SyncJobService.schedule(this);
     }
