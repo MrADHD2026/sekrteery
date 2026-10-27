@@ -448,6 +448,7 @@
           <button type="button" class="btn-sm red" data-act="test" data-s="repeat">قوي ومتكرر</button>
         </div>
       </section>
+      ${calSection(perms)}
       <section class="card">
         <h2>${I.pin} خرائط جوجل (اختياري)</h2>
         <p class="muted">بدون مفتاح: البحث من OpenStreetMap ووقت الطريق تقديري (بدون زحمة مباشرة، ونضيف عليه ٣٠٪). مع مفتاح خرائط جوجل: وقت الطريق بالزحمة الحقيقية والبحث أدق.</p>
@@ -499,6 +500,40 @@
       </section>
       <p class="muted center">سكرتيري · ${esc(N.version())}</p>
     </main>`;
+  }
+  function calSection(perms) {
+    const c = S.settings.cal || {};
+    if (!N.isApp) return `<section class="card"><h2>📅 تقويم جوجل</h2><p class="muted">الربط مع تقويم جوجل يشتغل من تطبيق الجوال. المواعيد اللي تنضاف من هناك تطلع في تقويم جوجل على الكمبيوتر تلقائياً.</p></section>`;
+    if (!perms.calendar) return `<section class="card"><h2>📅 تقويم جوجل</h2><p class="muted">مواعيدك في سكرتيري تنزل تلقائياً في تقويم جوجل، وتطلع في كل أجهزتك.</p><button type="button" class="btn-sm" data-act="perm" data-k="calendar">اسمح بالوصول للتقويم</button></section>`;
+    const cals = N.calendars().filter(x => x.writable);
+    const sel = c.calId || (cals.find(x => x.google && x.primary) || cals.find(x => x.google) || cals[0] || {}).id;
+    return `<section class="card">
+      <h2>📅 تقويم جوجل</h2>
+      <p class="muted">المواعيد اللي تضيفها في سكرتيري تنزل في التقويم اللي تختاره، وأي تعديل أو حذف يتحدّث هناك بعد.</p>
+      <label class="perm"><span class="grow"><b>أضف مواعيد سكرتيري للتقويم</b></span><input type="checkbox" name="calOn" ${c.on ? 'checked' : ''} style="width:24px;height:24px"></label>
+      <label class="perm"><span class="grow"><b>والمهام كمان</b><small>المهام اللي لها وقت محدد</small></span><input type="checkbox" name="calTasks" ${c.tasks ? 'checked' : ''} style="width:24px;height:24px"></label>
+      <label class="field"><span class="lbl">التقويم</span><select name="calId">${cals.map(x => `<option value="${x.id}" ${String(x.id) === String(sel) ? 'selected' : ''}>${esc(x.name)}${x.account && x.account !== x.name ? ' (' + esc(x.account) + ')' : ''}</option>`).join('')}</select></label>
+      ${cals.length ? '' : '<p class="err-msg">ما لقيت تقويم. تأكد إن حساب جوجل مضاف في الجوال وفيه مزامنة التقويم.</p>'}
+      <div class="two"><button type="button" class="btn-sm" data-act="save-cal">حفظ</button><button type="button" class="btn-sm outline" data-act="cal-backfill">أضف المواعيد الحالية</button></div>
+    </section>`;
+  }
+  function calWanted(it) {
+    const c = S.settings.cal || {};
+    if (!c.on || !c.calId || !N.isApp) return false;
+    if (it.type === 'task') return !!c.tasks && it.timeSet !== false;
+    return true;
+  }
+  function exportToCal(it) {
+    // يرجّع true لو تغيّر رقم الحدث
+    const c = S.settings.cal || {};
+    if (it.calEventId && (it.deleted || !calWanted(it))) {
+      if (it.deleted || !c.on) { N.calDelete(it.calEventId); it.calEventId = 0; return true; }
+    }
+    if (it.deleted || !calWanted(it)) return false;
+    const begin = it.timeSet === false ? new Date(it.due).setHours(9, 0, 0, 0) : it.due;
+    const id = N.calUpsert({ eventId: it.calEventId || -1, calId: +c.calId, title: it.title, begin, end: begin + 3600e3, location: it.place ? it.place.name : '', note: [SK.LEVEL_NAMES[it.level || 'normal'], it.note].filter(Boolean).join(' · ') });
+    if (id > 0 && id !== it.calEventId) { it.calEventId = id; return true; }
+    return false;
   }
   const isCustom = c => !Parser.DEFAULT_CATEGORIES.some(d => d.id === c.id);
 
@@ -751,6 +786,20 @@
     'sync-new'(d, el) { return actions['sync-in'](d, el, null, true); },
     async 'sync-reset'() { const email = $('[name="email"]').value.trim(); if (!email) { toast('اكتب الإيميل أول', 'err'); return; } try { await SK.sync.resetPassword(email); toast('أرسلنا رابط لإيميلك', 'ok'); } catch (e) { toast(authErr(e), 'err'); } },
     async 'sync-out'() { await SK.sync.signOut(); render(); },
+    'save-cal'() {
+      const cal = { on: $('[name="calOn"]').checked, tasks: $('[name="calTasks"]').checked, calId: $('[name="calId"]') ? $('[name="calId"]').value : null };
+      const old = S.settings.cal || {};
+      S.putSettings({ cal });
+      if (old.on && !cal.on) toast('وقفنا الإضافة للتقويم', 'ok');
+      else if (cal.on && !old.on) { actions['cal-backfill'](); return; }
+      else toast('تم الحفظ', 'ok');
+    },
+    'cal-backfill'() {
+      if (!(S.settings.cal || {}).on) { toast('فعّل "أضف مواعيد سكرتيري للتقويم" أول', 'err'); return; }
+      let n = 0;
+      S.activeItems().filter(i => !i.done && i.due > Date.now() - 3600e3).forEach(i => { if (exportToCal(i)) { S.putItem(i, { silent: true }); SK.sync.push('item', i); n++; } });
+      toast(n ? `انضاف ${n} للتقويم` : 'كل المواعيد موجودة في التقويم', 'ok');
+    },
     'save-maps'() { S.putSettings({ mapsKey: $('[name="mapsKey"]').value.trim() }); N.setConfig({ mapsKey: S.settings.mapsKey }); toast('تم الحفظ', 'ok'); },
     'save-budgets'() {
       $$('[data-budget]').forEach(i => { const c = S.category(i.dataset.budget); if (c) c.budget = Math.max(0, +i.value || 0); });
@@ -831,6 +880,9 @@
   }
 
   S.onChange((kind, doc) => {
+    if (kind === 'item' && doc && (doc.calEventId || calWanted(doc))) {
+      try { if (exportToCal(doc)) S.putItem(doc, { silent: true }); } catch (e) { console.warn(e); }
+    }
     if (kind === 'item' || kind === 'tx' || kind === 'settings') SK.sync.push(kind, doc);
     if (kind === 'item' || kind === 'remote' || kind === 'import') pushAlarms();
     if (kind === 'remote' || kind === 'settings') N.setConfig({ mapsKey: S.settings.mapsKey || '' });
@@ -840,7 +892,7 @@
 
   SK.app = {
     render, showWebAlarm,
-    onResume() { applyNativeActions(); pushAlarms(); if (!isFormRoute()) render(); }
+    onResume() { applyNativeActions(); pushAlarms(); if (!isFormRoute() || route().name === 'settings') render(); }
   };
 
   // أول تشغيل

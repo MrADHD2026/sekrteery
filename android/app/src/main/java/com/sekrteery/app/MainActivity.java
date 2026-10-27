@@ -209,6 +209,7 @@ public class MainActivity extends Activity {
                 PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
                 o.put("battery", pm != null && pm.isIgnoringBatteryOptimizations(getPackageName()));
                 o.put("location", Travel.hasLocationPerm(c));
+                o.put("calendar", Cal.hasPerm(c));
                 o.put("bgLocation", Build.VERSION.SDK_INT < 29 || checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED);
             } catch (Exception ignored) {}
             return o.toString();
@@ -252,6 +253,12 @@ public class MainActivity extends Activity {
                             return;
                         }
                         break;
+                    case "calendar":
+                        if (!Cal.hasPerm(c)) {
+                            requestPermissions(new String[]{Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR}, REQ_LOC);
+                            return;
+                        }
+                        break;
                     case "battery":
                         i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg);
                         break;
@@ -288,6 +295,16 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface public String takeActions() { return AlarmStore.takeActions(c); }
+
+        @JavascriptInterface public String calendars() { return Cal.calendars(c).toString(); }
+
+        @JavascriptInterface public String calendarUpsert(String json) {
+            try { return String.valueOf(Cal.upsert(c, new JSONObject(json))); } catch (Exception e) { return "-1"; }
+        }
+
+        @JavascriptInterface public void calendarDelete(String id) {
+            try { Cal.delete(c, Long.parseLong(id)); } catch (Exception ignored) {}
+        }
 
         @JavascriptInterface public void setConfig(String json) {
             AlarmStore.prefs(c).edit().putString("config", json == null ? "{}" : json).apply();

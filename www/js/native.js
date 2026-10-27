@@ -63,6 +63,9 @@
     setSyncCredentials(o) { if (A) try { A.setSyncCredentials(JSON.stringify(o || {})); } catch (e) { } },
     // ---- الأوامر اللي سواها المستخدم من شاشة المنبه
     takeActions() { if (!A) return []; try { return JSON.parse(A.takeActions() || '[]'); } catch (e) { return []; } },
+    calendars() { if (!A || !A.calendars) return []; try { return JSON.parse(A.calendars()); } catch (e) { return []; } },
+    calUpsert(o) { if (!A || !A.calendarUpsert) return -1; try { return +A.calendarUpsert(JSON.stringify(o)); } catch (e) { return -1; } },
+    calDelete(id) { if (A && A.calendarDelete && id > 0) try { A.calendarDelete(String(id)); } catch (e) { } },
     setConfig(o) { if (A && A.setConfig) try { A.setConfig(JSON.stringify(o || {})); } catch (e) { } },
     version() { if (A) try { return A.version(); } catch (e) { } return 'web'; }
   };
