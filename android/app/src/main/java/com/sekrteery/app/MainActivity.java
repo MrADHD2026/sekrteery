@@ -97,6 +97,12 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onConfigurationChanged(android.content.res.Configuration c) {
+        super.onConfigurationChanged(c);
+        if (web != null) web.evaluateJavascript("window.SKBridge && SKBridge.onResume()", null);
+    }
+
+    @Override
     public void onBackPressed() {
         if (web != null && web.canGoBack()) web.goBack();
         else super.onBackPressed();
@@ -304,6 +310,27 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface public void calendarDelete(String id) {
             try { Cal.delete(c, Long.parseLong(id)); } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface public boolean isNightMode() {
+            return (getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        }
+
+        @JavascriptInterface public void setTheme(String json) {
+            runOnUiThread(() -> {
+                try {
+                    JSONObject o = new JSONObject(json);
+                    int bg = android.graphics.Color.parseColor(o.optString("bg", "#F5F3EE").trim());
+                    boolean dark = o.optBoolean("dark");
+                    getWindow().setStatusBarColor(bg);
+                    getWindow().setNavigationBarColor(bg);
+                    if (web != null) web.setBackgroundColor(bg);
+                    android.view.View dv = getWindow().getDecorView();
+                    int f = dv.getSystemUiVisibility();
+                    int light = android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | (Build.VERSION.SDK_INT >= 27 ? android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR : 0);
+                    dv.setSystemUiVisibility(dark ? (f & ~light) : (f | light));
+                } catch (Exception ignored) {}
+            });
         }
 
         @JavascriptInterface public void setConfig(String json) {

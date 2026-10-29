@@ -66,6 +66,11 @@
     calendars() { if (!A || !A.calendars) return []; try { return JSON.parse(A.calendars()); } catch (e) { return []; } },
     calUpsert(o) { if (!A || !A.calendarUpsert) return -1; try { return +A.calendarUpsert(JSON.stringify(o)); } catch (e) { return -1; } },
     calDelete(id) { if (A && A.calendarDelete && id > 0) try { A.calendarDelete(String(id)); } catch (e) { } },
+    setTheme(o) { if (A && A.setTheme) try { A.setTheme(JSON.stringify(o)); } catch (e) { } },
+    systemDark() {
+      if (A && A.isNightMode) { try { return !!A.isNightMode(); } catch (e) { } }
+      return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+    },
     setConfig(o) { if (A && A.setConfig) try { A.setConfig(JSON.stringify(o || {})); } catch (e) { } },
     version() { if (A) try { return A.version(); } catch (e) { } return 'web'; }
   };

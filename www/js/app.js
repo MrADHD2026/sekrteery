@@ -423,6 +423,43 @@
     </main>`;
   }
 
+  // ================= المظهر =================
+  const PALETTES = [
+    { id: 'teal', name: 'زيتي', c: ['#0F5F59', '#F0A35E', '#F5F3EE'] },
+    { id: 'orange', name: 'برتقالي وفستقي', c: ['#C2410C', '#93C572', '#F6F9F0'] },
+    { id: 'blue', name: 'أزرق ملكي', c: ['#1D4ED8', '#FBBF24', '#F4F6FB'] },
+    { id: 'purple', name: 'بنفسجي', c: ['#6D28D9', '#F472B6', '#F7F5FB'] },
+    { id: 'pink', name: 'وردي', c: ['#BE185D', '#FDBA74', '#FDF6F8'] },
+    { id: 'gold', name: 'ذهبي ورملي', c: ['#8A6116', '#D4A72C', '#FAF6EE'] },
+    { id: 'cyan', name: 'فيروزي', c: ['#0E7490', '#FB923C', '#F2F8F9'] },
+    { id: 'ruby', name: 'عنابي', c: ['#9F1239', '#FCD34D', '#FBF5F5'] },
+    { id: 'mint', name: 'نعناعي', c: ['#15803D', '#FACC15', '#F3F8F4'] },
+    { id: 'mono', name: 'رمادي فحمي', c: ['#27272A', '#A1A1AA', '#F4F4F5'] }
+  ];
+  function applyTheme() {
+    const th = S.settings.theme || {};
+    const dark = th.mode === 'dark' || (th.mode === 'auto' && N.systemDark());
+    const h = document.documentElement;
+    h.dataset.mode = dark ? 'dark' : 'light';
+    h.dataset.palette = th.palette || 'teal';
+    h.dataset.fs = th.fs || 'md';
+    const bg = getComputedStyle(h).getPropertyValue('--bg').trim() || '#F5F3EE';
+    const m = document.querySelector('meta[name="theme-color"]'); if (m) m.setAttribute('content', bg);
+    N.setTheme({ bg, dark });
+  }
+  function themeSection() {
+    const th = S.settings.theme || {};
+    return `<section class="card">
+      <h2>🎨 المظهر</h2>
+      <div class="field"><span class="lbl">الوضع</span>${chips('thMode', [{ v: 'light', t: '☀️ نهار' }, { v: 'dark', t: '🌙 ليل' }, { v: 'auto', t: '📱 حسب الجوال' }], th.mode || 'light')}</div>
+      <div class="field"><span class="lbl">الألوان</span>
+        <div class="swatches">${PALETTES.map(p => `<button type="button" class="swatch" data-act="theme-palette" data-id="${p.id}" aria-pressed="${(th.palette || 'teal') === p.id}"><span class="dots">${p.c.map(c => `<i style="background:${c}"></i>`).join('')}</span>${esc(p.name)}</button>`).join('')}</div>
+      </div>
+      <div class="field"><span class="lbl">حجم الخط</span>${chips('thFs', [{ v: 'sm', t: 'صغير' }, { v: 'md', t: 'عادي' }, { v: 'lg', t: 'كبير' }, { v: 'xl', t: 'كبير جداً' }], th.fs || 'md')}</div>
+    </section>`;
+  }
+  function setTheme(patch) { S.putSettings({ theme: Object.assign({}, S.settings.theme || {}, patch) }); applyTheme(); }
+
   // ================= الإعدادات =================
   const PERMS = [
     { k: 'notifications', t: 'الإشعارات', d: 'عشان توصلك التنبيهات أصلاً' },
@@ -440,6 +477,7 @@
     const cats = S.settings.categories;
     return `${header('الإعدادات', '#/' + (S.settings.lastTab || 'tasks'))}
     <main class="wrap narrow">
+      ${themeSection()}
       ${N.isApp ? `<section class="card">
         <h2>صلاحيات التنبيه القوي</h2>
         ${PERMS.map(p => `<div class="perm"><span class="grow"><b>${p.t}</b><small>${p.d}</small></span>${perms[p.k] ? `<span class="ok">${I.check} مفعّل</span>` : `<button type="button" class="btn-sm" data-act="perm" data-k="${p.k}">فعّل</button>`}</div>`).join('')}
@@ -678,6 +716,8 @@
     chip(d, el) {
       const form = el.closest('form') || document;
       $$(`.chip[data-group="${d.group}"]`, el.closest('.chips')).forEach(b => b.setAttribute('aria-pressed', String(b === el)));
+      if (d.group === 'thMode') { setTheme({ mode: d.val }); return; }
+      if (d.group === 'thFs') { setTheme({ fs: d.val }); return; }
       if (d.group === 'taskPeriod') { st.taskPeriod = d.val; render(); }
       else if (d.group === 'moneyPeriod') { st.moneyPeriod = d.val; st.moneyOffset = 0; render(); }
       else if (d.group === 'mode') { if (st.mode === 'voice') st.voice.text = readVoiceText(); st.mode = d.val; render(); }
@@ -819,6 +859,7 @@
       S.activeItems().filter(i => !i.done && i.due > Date.now() - 3600e3).forEach(i => { if (exportToCal(i)) { S.putItem(i, { silent: true }); SK.sync.push('item', i); n++; } });
       toast(n ? `انضاف ${n} للتقويم` : 'كل المواعيد موجودة في التقويم', 'ok');
     },
+    'theme-palette'(d, el) { $$('.swatch').forEach(b => b.setAttribute('aria-pressed', String(b === el))); setTheme({ palette: d.id }); },
     'save-maps'() { S.putSettings({ mapsKey: $('[name="mapsKey"]').value.trim() }); N.setConfig({ mapsKey: S.settings.mapsKey }); toast('تم الحفظ', 'ok'); },
     'save-budgets'() {
       $$('[data-budget]').forEach(i => { const c = S.category(i.dataset.budget); if (c) c.budget = Math.max(0, +i.value || 0); });
@@ -915,16 +956,19 @@
     if (kind === 'item' || kind === 'tx' || kind === 'settings' || kind === 'trip') SK.sync.push(kind, doc);
     if (kind === 'item' || kind === 'remote' || kind === 'import') pushAlarms();
     if (kind === 'remote' || kind === 'settings') N.setConfig({ mapsKey: S.settings.mapsKey || '' });
+    if (kind === 'remote') applyTheme();
     if (kind === 'remote' && isFormRoute()) return; // لا نمسح اللي تكتبه
     if (!st.sheet || kind !== 'remote') render();
   });
 
   SK.app = {
     render, showWebAlarm,
-    onResume() { applyNativeActions(); pushAlarms(); if (!isFormRoute() || route().name === 'settings') render(); }
+    onResume() { applyTheme(); applyNativeActions(); pushAlarms(); if (!isFormRoute() || route().name === 'settings') render(); }
   };
 
   // أول تشغيل
+  applyTheme();
+  try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme); } catch (e) { }
   const r0 = route();
   if (!location.hash) location.replace('#/' + (S.settings.lastTab || 'tasks'));
   if ((r0.name === 'task' || r0.name === 'tx') && r0.parts[1] === 'new') st.mode = r0.params.mode === 'manual' ? 'manual' : 'voice';
