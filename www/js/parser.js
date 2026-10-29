@@ -523,11 +523,31 @@
     }
 
     // --- التكرار
-    let repeat = 'none';
+    let repeat = 'none', rep = null;
+    const unitOfRep = (w) => /^(يوم|ايام|يومين)$/.test(w) ? 'day' : /^(اسبوع|اسابيع|اسبوعين)$/.test(w) ? 'week' : /^(شهر|اشهر|شهور|شهرين)$/.test(w) ? 'month' : null;
+    const dayIdx = (w) => DAYS.findIndex(a => a.some(dn => [w, ...stripPrefix(w)].includes(dn)));
     N.forEach((x, k) => {
-      if (['يوميا', 'يومي'].includes(x) || (x === 'كل' && N[k + 1] === 'يوم')) { repeat = 'daily'; used.add(k); if (x === 'كل') used.add(k + 1); }
-      else if (['اسبوعيا', 'اسبوعي'].includes(x) || (x === 'كل' && (N[k + 1] === 'اسبوع' || DAYS.some(a => a.includes(N[k + 1]))))) { repeat = 'weekly'; used.add(k); if (x === 'كل' && N[k + 1] === 'اسبوع') used.add(k + 1); }
-      else if (['شهريا', 'شهري'].includes(x) || (x === 'كل' && N[k + 1] === 'شهر')) { repeat = 'monthly'; used.add(k); if (x === 'كل') used.add(k + 1); }
+      if (['يوميا', 'يومي'].includes(x)) { repeat = 'daily'; used.add(k); return; }
+      if (['اسبوعيا', 'اسبوعي'].includes(x)) { repeat = 'weekly'; used.add(k); return; }
+      if (['شهريا', 'شهري'].includes(x)) { repeat = 'monthly'; used.add(k); return; }
+      if (x !== 'كل') return;
+      used.add(k);
+      let j = k + 1;
+      if (N[j] === 'يوم' && dayIdx(N[j + 1] || '') >= 0) { used.add(j); j++; }
+      // كل أحد واثنين
+      const days = [];
+      while (j < N.length && dayIdx(N[j]) >= 0) { days.push(dayIdx(N[j])); used.add(j); j++; }
+      if (days.length) { repeat = 'custom'; rep = { every: 1, unit: 'week', days }; return; }
+      // كل يوم / كل أسبوع / كل شهر / كل يومين / كل أسبوعين / كل 3 أيام
+      let n = 1, unit = unitOfRep(N[j] || '');
+      if (unit) { if (/ين$/.test(N[j])) n = 2; used.add(j); }
+      else {
+        const am = findAmounts(cl.slice(j, j + 2));
+        if (am.length && am[0].start === 0) { n = am[0].value; unit = unitOfRep(N[j + am[0].end] || ''); if (unit) { for (let q = j; q <= j + am[0].end; q++) used.add(q); } }
+      }
+      if (!unit) return;
+      if (n === 1) repeat = unit === 'day' ? 'daily' : unit === 'week' ? 'weekly' : 'monthly';
+      else { repeat = 'custom'; rep = { every: n, unit, days: [] }; }
     });
 
     // --- تركيب الموعد
@@ -557,7 +577,7 @@
 
     return {
       type, title, level, due: due.getTime(), timeSet: timeSet || !!ctx.exactTime, dateSet,
-      deadline, repeat, before: before != null ? before : (type === 'task' ? 0 : (level === 'normal' ? 0 : 30)),
+      deadline, repeat, rep, before: before != null ? before : (type === 'task' ? 0 : (level === 'normal' ? 0 : 30)),
       money, approxPrayer: ctx.approxPrayer || null, source: cl.map(t => t.raw).join(' ')
     };
   }

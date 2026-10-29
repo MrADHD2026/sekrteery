@@ -40,7 +40,7 @@
   SK.LEVEL_NAMES = { normal: 'عادي', important: 'مهم', urgent: 'عاجل' };
   SK.STRENGTH_NAMES = { normal: 'عادي', strong: 'قوي', repeat: 'قوي ومتكرر' };
   SK.LEVEL_STRENGTH = { normal: 'normal', important: 'strong', urgent: 'repeat' };
-  SK.REPEAT_NAMES = { none: 'مرة وحدة', daily: 'يومي', weekly: 'أسبوعي', monthly: 'شهري' };
+  SK.REPEAT_NAMES = { none: 'مرة وحدة', daily: 'يومي', weekly: 'أسبوعي', monthly: 'شهري', custom: 'مخصص' };
   SK.KIND_NAMES = { expense: 'مصروف', income: 'دخل', deduction: 'خصم بنكي' };
 
   // ---------- التخزين ----------
@@ -86,20 +86,68 @@
     },
     snoozeItem(id, until) { const it = S.getItem(id); if (!it) return; it.snoozeUntil = until; S.putItem(it); },
     rescheduleItem(id, due) { const it = S.getItem(id); if (!it) return; it.due = due; it.done = false; it.snoozeUntil = 0; it.missedAck = false; S.putItem(it); },
+    // الموعد الجاي حسب نوع التكرار
+    nextDue(it, from) {
+      const d = new Date(from);
+      const r = it.rep || {};
+      const rep = it.repeat;
+      if (rep === 'daily') d.setDate(d.getDate() + 1);
+      else if (rep === 'weekly') d.setDate(d.getDate() + 7);
+      else if (rep === 'monthly') d.setMonth(d.getMonth() + 1);
+      else if (rep === 'custom') {
+        const n = Math.max(1, +r.every || 1);
+        if (r.unit === 'day') d.setDate(d.getDate() + n);
+        else if (r.unit === 'month') d.setMonth(d.getMonth() + n);
+        else {
+          const days = (r.days || []).map(Number);
+          if (!days.length) d.setDate(d.getDate() + 7 * n);
+          else {
+            // أول يوم مختار بعد هذا الموعد، في أسبوع من أسابيع الدورة
+            const anchor = U.startOfWeek(r.anchor || it.due);
+            for (let k = 1; k <= 7 * n + 7; k++) {
+              const c = new Date(from); c.setDate(c.getDate() + k);
+              const wk = Math.round((U.startOfWeek(c) - anchor) / (7 * 864e5));
+              if (wk % n === 0 && days.includes(c.getDay())) return c.getTime();
+            }
+            d.setDate(d.getDate() + 7 * n);
+          }
+        }
+      } else return null;
+      return d.getTime();
+    },
+    // لو اختار أيام معينة والتاريخ مو منها: ننقله لأقرب يوم مختار
+    normalizeRepeat(it) {
+      if (it.repeat !== 'custom' || !it.rep) return it;
+      it.rep.anchor = it.rep.anchor || it.due;
+      const days = (it.rep.days || []).map(Number);
+      if (it.rep.unit === 'week' && days.length && !days.includes(new Date(it.due).getDay())) {
+        // أقرب يوم مختار، ومنه تبدأ الدورة
+        for (let k = 1; k <= 7; k++) {
+          const c = new Date(it.due); c.setDate(c.getDate() + k);
+          if (days.includes(c.getDay())) { it.due = c.getTime(); break; }
+        }
+        it.rep.anchor = it.due;
+      }
+      return it;
+    },
+    repeatLabel(it) {
+      if (it.repeat !== 'custom') return SK.REPEAT_NAMES[it.repeat || 'none'];
+      const r = it.rep || {}; const n = +r.every || 1;
+      const unit = r.unit === 'day' ? (n === 1 ? 'كل يوم' : n === 2 ? 'كل يومين' : `كل ${n} أيام`)
+        : r.unit === 'month' ? (n === 1 ? 'كل شهر' : n === 2 ? 'كل شهرين' : `كل ${n} شهور`)
+        : (n === 1 ? 'كل أسبوع' : n === 2 ? 'كل أسبوعين' : `كل ${n} أسابيع`);
+      const days = r.unit === 'week' && r.days && r.days.length ? ': ' + r.days.map(x => U.DAY_NAMES[x]).join('، ') : '';
+      return unit + days;
+    },
     rollRepeat(it) {
       // ينشئ الموعد الجاي للمتكرر
       if (!it.repeat || it.repeat === 'none' || it.rolled || it.deleted) return;
-      const d = new Date(it.due);
-      if (it.repeat === 'daily') d.setDate(d.getDate() + 1);
-      if (it.repeat === 'weekly') d.setDate(d.getDate() + 7);
-      if (it.repeat === 'monthly') d.setMonth(d.getMonth() + 1);
-      while (d.getTime() < Date.now() - 864e5) { // لو فات أكثر من دورة
-        if (it.repeat === 'daily') d.setDate(d.getDate() + 1);
-        else if (it.repeat === 'weekly') d.setDate(d.getDate() + 7);
-        else d.setMonth(d.getMonth() + 1);
-      }
+      let t = S.nextDue(it, it.due);
+      if (t == null) return;
+      let guard = 0;
+      while (t < Date.now() - 864e5 && guard++ < 500) t = S.nextDue(it, t); // لو فات أكثر من دورة
       it.rolled = true; S.putItem(it, { silent: true });
-      const next = Object.assign({}, it, { id: null, done: false, doneAt: 0, rolled: false, snoozeUntil: 0, due: d.getTime(), missedAck: false });
+      const next = Object.assign({}, it, { id: null, done: false, doneAt: 0, rolled: false, snoozeUntil: 0, due: t, missedAck: false, calEventId: 0 });
       S.putItem(next);
     },
     strengthOf(it) { return it.strength || SK.LEVEL_STRENGTH[it.level || 'normal']; },

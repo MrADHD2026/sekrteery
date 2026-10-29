@@ -80,7 +80,7 @@
   function itemRow(it, opts) {
     const now = Date.now();
     const missed = isMissed(it, now);
-    const meta = [SK.TYPE_NAMES[it.type], SK.LEVEL_NAMES[it.level || 'normal'], opts && opts.showDay ? U.dayRel(it.due) : null, it.repeat && it.repeat !== 'none' ? SK.REPEAT_NAMES[it.repeat] : null, it.money ? 'مرتبطة بالمالية' : null, it.place ? '📍 ' + it.place.name : null].filter(Boolean).join(' · ');
+    const meta = [SK.TYPE_NAMES[it.type], SK.LEVEL_NAMES[it.level || 'normal'], opts && opts.showDay ? U.dayRel(it.due) : null, it.repeat && it.repeat !== 'none' ? S.repeatLabel(it) : null, it.money ? 'مرتبطة بالمالية' : null, it.place ? '📍 ' + it.place.name : null].filter(Boolean).join(' · ');
     return `<div class="row-item ${it.done ? 'done' : ''} lvl-${it.level || 'normal'}">
       <button type="button" class="tick" data-act="toggle-done" data-id="${it.id}" aria-label="${it.done ? 'رجّعها غير منجزة' : 'تم'}" aria-pressed="${!!it.done}">${I.check}</button>
       <a class="row-main" href="#/task/${it.id}">
@@ -259,7 +259,16 @@
       </div>
       <div class="two">
         <label class="field"><span class="lbl">نبهني قبل</span><select name="before">${BEFORE_OPTS.map(m => `<option value="${m}" ${(+it.before || 0) === m ? 'selected' : ''}>${m ? SK.beforeText(m) : 'في الوقت نفسه'}</option>`).join('')}</select></label>
-        <label class="field"><span class="lbl">التكرار</span><select name="repeat">${Object.keys(SK.REPEAT_NAMES).map(k => `<option value="${k}" ${(it.repeat || 'none') === k ? 'selected' : ''}>${SK.REPEAT_NAMES[k]}${k === 'monthly' ? ' (مثل الفواتير)' : ''}</option>`).join('')}</select></label>
+        <label class="field"><span class="lbl">التكرار</span><select name="repeat" data-change="repeat">${Object.keys(SK.REPEAT_NAMES).map(k => `<option value="${k}" ${(it.repeat || 'none') === k ? 'selected' : ''}>${k === 'custom' ? 'مخصص (أنت تحدد)' : SK.REPEAT_NAMES[k]}${k === 'monthly' ? ' (مثل الفواتير)' : ''}</option>`).join('')}</select></label>
+      </div>
+      <div class="custom-rep" data-slot="customRep" ${it.repeat === 'custom' ? '' : 'hidden'}>
+        <div class="rep-row"><span>كل</span><input name="repEvery" type="number" min="1" max="99" inputmode="numeric" value="${(it.rep && it.rep.every) || 1}" aria-label="كل كم">
+          <select name="repUnit" data-change="repUnit" aria-label="الوحدة">${[['day', 'يوم'], ['week', 'أسبوع'], ['month', 'شهر']].map(([v, t]) => `<option value="${v}" ${((it.rep && it.rep.unit) || 'week') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div data-slot="repDays" ${((it.rep && it.rep.unit) || 'week') === 'week' ? '' : 'hidden'}>
+          <span class="lbl">في أيام (اختر يوم أو أكثر)</span>
+          <div class="chips days-chips" role="group">${U.DAY_SHORT.map((dn, k) => `<button type="button" class="chip" data-act="toggle-day" data-day="${k}" aria-pressed="${!!(it.rep && it.rep.days && it.rep.days.map(Number).includes(k))}">${dn}</button>`).join('')}</div>
+        </div>
+        <small class="muted">مثلاً: "كل 2 أسبوع" يعني كل أسبوعين. و"كل 1 أسبوع" مع أحد واثنين يعني كل أحد واثنين.</small>
       </div>
       <div class="field"><span class="lbl">المكان (اختياري)</span>
         <input type="hidden" name="plat" value="${it.place ? it.place.lat : ''}"><input type="hidden" name="plng" value="${it.place ? it.place.lng : ''}"><input type="hidden" name="pname" value="${esc(it.place ? it.place.name : '')}">
@@ -282,13 +291,14 @@
     const title = f.title.value.trim();
     if (!title) { toast('اكتب العنوان', 'err'); f.title.focus(); return null; }
     const ts = f.time.value;
-    return Object.assign({}, base || {}, {
+    return S.normalizeRepeat(Object.assign({}, base || {}, {
       type: chipVal(f, 'type') || 'task', level: chipVal(f, 'level') || 'normal', strength: chipVal(f, 'strength') || 'normal',
       title, due: U.fromInputs(f.date.value || U.inputDate(Date.now()), ts || '09:00'), timeSet: !!ts,
-      before: +f.before.value || 0, repeat: f.repeat.value, money: f.money.value || null, note: f.note.value.trim(),
+      before: +f.before.value || 0, repeat: f.repeat.value,
+      rep: f.repeat.value === 'custom' ? { every: Math.max(1, +f.repEvery.value || 1), unit: f.repUnit.value, days: f.repUnit.value === 'week' ? $$('[data-act="toggle-day"][aria-pressed="true"]', f).map(b => +b.dataset.day) : [], anchor: (base && base.rep && base.rep.anchor) || null } : null, money: f.money.value || null, note: f.note.value.trim(),
       place: f.plat.value ? { lat: +f.plat.value, lng: +f.plng.value, name: f.pname.value } : null,
       leaveBuffer: +f.leaveBuffer.value || 15
-    });
+    }));
   }
   function catChips(kind, value) {
     const cats = S.settings.categories.filter(c => kind === 'income' ? c.kind === 'income' : c.kind !== 'income');
@@ -331,7 +341,7 @@
           <li>${esc(U.dateShort(d.due))}${d.timeSet ? ' · الساعة ' + esc(U.time(d.due)) : ' · بدون وقت محدد'}${d.approxPrayer ? ' (تقريباً)' : ''}</li>
           ${d.before ? `<li>${d.type === 'task' ? 'ينبهك قبلها' : 'تنبيه "اطلع الحين"'} بـ ${esc(SK.beforeText(d.before))}</li>` : ''}
           <li class="${d.level === 'urgent' ? 'red' : d.level === 'important' ? 'orange' : ''}">التنبيه: ${esc(s)}${(d.strength || SK.LEVEL_STRENGTH[d.level]) !== 'normal' ? ' (شاشة كاملة)' : ''}</li>
-          ${d.repeat && d.repeat !== 'none' ? `<li>يتكرر: ${esc(SK.REPEAT_NAMES[d.repeat])}</li>` : ''}
+          ${d.repeat && d.repeat !== 'none' ? `<li>يتكرر: ${esc(S.repeatLabel(d))}</li>` : ''}
           ${d.money ? `<li>مرتبطة بالمالية: لما تخلصها تنسجل مصروف</li>` : ''}
           ${d.place ? `<li>📍 ${esc(d.place.name)}: "اطلع الحين" حسب وقت الطريق من موقعك</li>` : ''}
         </ul>
@@ -702,7 +712,7 @@
     },
     'save-drafts'(d) {
       const n = st.voice.drafts.length; if (!n) return;
-      if (d.kind === 'task') st.voice.drafts.forEach(x => { const it = Object.assign({}, x); delete it.source; delete it.approxPrayer; delete it.dateSet; delete it.deadline; it.done = false; S.putItem(it); });
+      if (d.kind === 'task') st.voice.drafts.forEach(x => { const it = Object.assign({}, x); delete it.source; delete it.approxPrayer; delete it.dateSet; delete it.deadline; it.done = false; S.putItem(S.normalizeRepeat(it)); });
       else st.voice.drafts.forEach(x => { const t = Object.assign({}, x); delete t.source; const saved = S.putTx(t); budgetCheck(saved); });
       st.voice = { text: '', listening: false, err: '', drafts: [] };
       toast(n === 1 ? 'تم الحفظ' : `تم حفظ ${n}`, 'ok');
@@ -732,6 +742,7 @@
     'resched-at'(d) { S.rescheduleItem(st.sheet.id, +d.at); st.sheet = null; toast('تمت الجدولة', 'ok'); render(); },
     'resched-custom'() { const r = $('#sheet'); S.rescheduleItem(st.sheet.id, U.fromInputs($('[name="rdate"]', r).value, $('[name="rtime"]', r).value)); st.sheet = null; toast('تمت الجدولة', 'ok'); render(); },
     'money-link-save'() { const t = readTxForm($('#sheet')); if (!t) return; budgetCheck(S.putTx(t)); st.sheet = null; toast('انسجل في المالية', 'ok'); render(); },
+    'toggle-day'(d, el) { el.setAttribute('aria-pressed', String(el.getAttribute('aria-pressed') !== 'true')); },
     'place-open'(d) {
       // يطلب صلاحية الموقع أول ما تحدد مكان
       if (N.isApp) { const pm = N.permissions(); if (pm.location === false) N.requestPermission('location'); }
@@ -845,6 +856,13 @@
     fn(el.dataset, el);
   });
   document.addEventListener('change', e => {
+    const ch = e.target.dataset && e.target.dataset.change;
+    if (ch === 'repeat' || ch === 'repUnit') {
+      const f = e.target.closest('form');
+      const box = $('[data-slot="customRep"]', f); if (box) box.hidden = f.repeat.value !== 'custom';
+      const days = $('[data-slot="repDays"]', f); if (days) days.hidden = f.repUnit.value !== 'week';
+      return;
+    }
     if (e.target.dataset && e.target.dataset.actChange === 'import') {
       const f = e.target.files[0]; if (!f) return;
       f.text().then(t => { try { S.importAll(t); toast('تم الاسترجاع', 'ok'); render(); } catch (er) { toast('الملف مو صحيح', 'err'); } });
