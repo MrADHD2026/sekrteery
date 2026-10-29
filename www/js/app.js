@@ -66,6 +66,7 @@
     return `<nav class="seg" aria-label="الأقسام">
       <a href="#/tasks" class="${active === 'tasks' ? 'on' : ''}" aria-current="${active === 'tasks' ? 'page' : 'false'}">المهام والمواعيد</a>
       <a href="#/money" class="${active === 'money' ? 'on' : ''}" aria-current="${active === 'money' ? 'page' : 'false'}">المالية</a>
+      <a href="#/travel" class="${active === 'travel' ? 'on' : ''}" aria-current="${active === 'travel' ? 'page' : 'false'}">السفر</a>
     </nav>`;
   }
 
@@ -80,7 +81,7 @@
   function itemRow(it, opts) {
     const now = Date.now();
     const missed = isMissed(it, now);
-    const meta = [SK.TYPE_NAMES[it.type], SK.LEVEL_NAMES[it.level || 'normal'], opts && opts.showDay ? U.dayRel(it.due) : null, it.repeat && it.repeat !== 'none' ? S.repeatLabel(it) : null, it.money ? 'مرتبطة بالمالية' : null, it.place ? '📍 ' + it.place.name : null].filter(Boolean).join(' · ');
+    const meta = [SK.TYPE_NAMES[it.type], SK.LEVEL_NAMES[it.level || 'normal'], opts && opts.showDay ? U.dayRel(it.due) : null, it.repeat && it.repeat !== 'none' ? S.repeatLabel(it) : null, it.money ? 'مرتبطة بالمالية' : null, it.place ? '📍 ' + it.place.name : null, it.tripId && SK.travel ? '✈️ ' + SK.travel.tripName(it.tripId) : null].filter(Boolean).join(' · ');
     return `<div class="row-item ${it.done ? 'done' : ''} lvl-${it.level || 'normal'}">
       <button type="button" class="tick" data-act="toggle-done" data-id="${it.id}" aria-label="${it.done ? 'رجّعها غير منجزة' : 'تم'}" aria-pressed="${!!it.done}">${I.check}</button>
       <a class="row-main" href="#/task/${it.id}">
@@ -217,6 +218,7 @@
         </div>
         ${sm.income <= 0 ? '<span class="muted-l small">ما سجلت دخل في هالفترة. قل مثلاً: "استلمت الراتب عشرة آلاف"</span>' : ''}
       </section>
+      ${SK.travel && SK.travel.shareIn(r.from, r.to) > 0 ? `<a class="banner teal" href="#/travel">✈️<span>مصاريف السفر في هالفترة (حصتك): <b>${U.money(SK.travel.shareIn(r.from, r.to))} ر.س</b>. منفصلة عن ميزانيتك هنا.</span></a>` : ''}
       ${(warns.length || daysToSalary != null) ? `<section class="banner orange">${I.warn}<span>${warns.length ? '<b>انتبه:</b> ' + warns.join('، ') + '. ' : ''}${daysToSalary != null ? `${daysToSalary === 0 ? 'الراتب ينزل اليوم!' : 'باقي على الراتب ' + (daysToSalary === 1 ? 'يوم واحد' : daysToSalary === 2 ? 'يومين' : daysToSalary + ' ' + (daysToSalary <= 10 ? 'أيام' : 'يوم'))}.` : ''}</span></section>` : ''}
       <section class="card">
         <h2>أكثر البنود صرفاً</h2>
@@ -249,6 +251,7 @@
     const strength = it.strength || SK.LEVEL_STRENGTH[level];
     const cats = S.settings.categories.filter(c => c.kind !== 'income');
     return `<form class="form" data-form="task" onsubmit="return false">
+      ${it.tripId ? `<input type="hidden" name="tripId" value="${esc(it.tripId)}"><div class="field"><span class="lbl">✈️ ${esc(SK.travel.tripName(it.tripId))}</span>${chips('tripKind', Object.keys(SK.travel.KINDS).map(k => ({ v: k, t: SK.travel.KINDS[k].icon + ' ' + SK.travel.KINDS[k].name })), it.tripKind || 'activity')}</div>` : ''}
       <div class="field"><span class="lbl">النوع</span>${chips('type', [{ v: 'appointment', t: 'موعد' }, { v: 'task', t: 'مهمة' }, { v: 'event', t: 'إيفنت' }], it.type || 'task')}</div>
       <div class="field"><span class="lbl">درجة الأهمية</span>${chips('level', [{ v: 'normal', t: 'عادي', sub: 'إشعار', cls: 'lv-n' }, { v: 'important', t: 'مهم', sub: 'شاشة كاملة', cls: 'lv-i' }, { v: 'urgent', t: 'عاجل', sub: 'كاملة ومتكررة', cls: 'lv-u' }], level, 'tall')}
         <small class="muted">الأهمية تحدد قوة التنبيه تلقائياً، وتقدر تغيرها تحت</small></div>
@@ -297,7 +300,9 @@
       before: +f.before.value || 0, repeat: f.repeat.value,
       rep: f.repeat.value === 'custom' ? { every: Math.max(1, +f.repEvery.value || 1), unit: f.repUnit.value, days: f.repUnit.value === 'week' ? $$('[data-act="toggle-day"][aria-pressed="true"]', f).map(b => +b.dataset.day) : [], anchor: (base && base.rep && base.rep.anchor) || null } : null, money: f.money.value || null, note: f.note.value.trim(),
       place: f.plat.value ? { lat: +f.plat.value, lng: +f.plng.value, name: f.pname.value } : null,
-      leaveBuffer: +f.leaveBuffer.value || 15
+      leaveBuffer: +f.leaveBuffer.value || 15,
+      tripId: f.tripId ? f.tripId.value : (base && base.tripId) || null,
+      tripKind: f.tripId ? (chipVal(f, 'tripKind') || 'activity') : (base && base.tripKind) || null
     }));
   }
   function catChips(kind, value) {
@@ -360,7 +365,7 @@
   function viewAdd(kind, params) {
     const mode = st.mode;
     const v = st.voice;
-    const back = kind === 'task' ? '#/tasks' : '#/money';
+    const back = params.trip ? `#/trip/${params.trip}?tab=agenda` : kind === 'task' ? '#/tasks' : '#/money';
     const title = kind === 'task' ? 'موعد أو مهمة جديدة' : 'تسجيل مالي';
     const example = kind === 'task'
       ? 'مثلاً: "بكرة الساعة عشرة الصبح عندي موعد مهم في المستشفى، وذكرني أسدد فاتورة الكهرباء قبل الخميس"'
@@ -381,17 +386,18 @@
           <div class="bottom inline"><button type="button" class="btn primary big" data-act="save-drafts" data-kind="${kind}">تأكيد وحفظ</button></div>
           <p class="muted center">اضغط "تعديل" لو فهمت شي غلط</p>` : (v.text ? '<p class="empty">ما فهمت شي من الجملة. جرب تقولها بطريقة ثانية أو استخدم اليدوي.</p>' : `<p class="muted center">${esc(example)}</p>`)}
       ` : `
-        ${kind === 'task' ? taskForm(params.date ? { due: +params.date } : null) : txForm()}
+        ${kind === 'task' ? taskForm(Object.assign({}, params.date ? { due: +params.date } : {}, params.trip ? { tripId: params.trip, tripKind: params.tk || 'activity', type: params.tk === 'prep' ? 'task' : 'appointment', level: 'important' } : {})) : txForm()}
         <div class="bottom inline"><button type="button" class="btn primary big" data-act="save-manual" data-kind="${kind}">حفظ</button></div>
       `}
     </main>`;
   }
 
   // ================= شاشة التعديل =================
+  const backFor = it => it && it.tripId ? `#/trip/${it.tripId}?tab=${it.tripKind === 'prep' ? 'prep' : 'agenda'}` : '#/tasks';
   function viewEditTask(id) {
     const it = S.getItem(id);
     if (!it || it.deleted) return `${header('غير موجود', '#/tasks')}<main class="wrap narrow"><p class="empty">هذا العنصر محذوف.</p></main>`;
-    return `${header('تعديل', '#/tasks')}
+    return `${header('تعديل', backFor(it))}
     <main class="wrap narrow">
       ${it.done ? `<div class="banner teal">${I.check}<span>منجزة ${it.doneAt ? esc(U.dayRel(it.doneAt)) + ' ' + esc(U.time(it.doneAt)) : ''}</span></div>` : ''}
       ${taskForm(it)}
@@ -613,6 +619,7 @@
     else if (r.name === 'tx' && r.parts[1] === 'new') html = viewAdd('tx', r.params);
     else if (r.name === 'tx' && r.parts[1]) html = viewEditTx(r.parts[1]);
     else if (r.name === 'settings') html = viewSettings();
+    else if (SK.travel && SK.travel.handles(r)) { if (r.name === 'travel') S.settings.lastTab = 'travel'; html = SK.travel.view(r, SK.ui); }
     else { html = viewTasks(); }
     app.innerHTML = html;
     const mainEl = $('main', app);
@@ -620,7 +627,7 @@
     try { localStorage.setItem('sk_settings', JSON.stringify(S.settings)); } catch (e) { }
     renderSheet();
   }
-  const isFormRoute = () => { const r = route(); return (r.name === 'task' || r.name === 'tx') || r.name === 'settings'; };
+  const isFormRoute = () => { const r = route(); return (r.name === 'task' || r.name === 'tx') || r.name === 'settings' || (SK.travel && SK.travel.isForm(r)); };
 
   // ================= الأوامر =================
   function readVoiceText() { const ta = $('textarea[name="vtext"]'); return ta ? ta.value.trim() : st.voice.text; }
@@ -712,29 +719,30 @@
     },
     'save-drafts'(d) {
       const n = st.voice.drafts.length; if (!n) return;
-      if (d.kind === 'task') st.voice.drafts.forEach(x => { const it = Object.assign({}, x); delete it.source; delete it.approxPrayer; delete it.dateSet; delete it.deadline; it.done = false; S.putItem(S.normalizeRepeat(it)); });
+      const tripP = route().params.trip;
+      if (d.kind === 'task') st.voice.drafts.forEach(x => { const it = Object.assign({}, x); if (tripP && !it.tripId) { it.tripId = tripP; it.tripKind = it.tripKind || 'activity'; } delete it.source; delete it.approxPrayer; delete it.dateSet; delete it.deadline; it.done = false; S.putItem(S.normalizeRepeat(it)); });
       else st.voice.drafts.forEach(x => { const t = Object.assign({}, x); delete t.source; const saved = S.putTx(t); budgetCheck(saved); });
       st.voice = { text: '', listening: false, err: '', drafts: [] };
       toast(n === 1 ? 'تم الحفظ' : `تم حفظ ${n}`, 'ok');
-      go(d.kind === 'task' ? '#/tasks' : '#/money');
+      go(d.kind === 'task' ? (tripP ? `#/trip/${tripP}?tab=agenda` : '#/tasks') : '#/money');
     },
     'save-manual'(d) {
-      if (d.kind === 'task') { const it = readTaskForm(document); if (!it) return; it.done = false; S.putItem(it); toast('تم الحفظ', 'ok'); go('#/tasks'); }
+      if (d.kind === 'task') { const it = readTaskForm(document); if (!it) return; it.done = false; S.putItem(it); toast('تم الحفظ', 'ok'); go(backFor(it)); }
       else { const t = readTxForm(document); if (!t) return; budgetCheck(S.putTx(t)); toast('تم الحفظ', 'ok'); go('#/money'); }
     },
     'save-edit-task'(d) {
       const old = S.getItem(d.id); const it = readTaskForm(document, old); if (!it) return;
       if (it.due !== old.due) { it.snoozeUntil = 0; it.missedAck = false; }
-      S.putItem(it); toast('تم الحفظ', 'ok'); go('#/tasks');
+      S.putItem(it); toast('تم الحفظ', 'ok'); go(backFor(it));
     },
     'save-edit-tx'(d) { const t = readTxForm(document, S.getTx(d.id)); if (!t) return; S.putTx(t); toast('تم الحفظ', 'ok'); go('#/money'); },
-    'del-task'(d) { if (!confirm('تحذفها؟')) return; S.removeItem(d.id); toast('انحذفت'); go('#/tasks'); },
+    'del-task'(d) { if (!confirm('تحذفها؟')) return; const b = backFor(S.getItem(d.id)); S.removeItem(d.id); toast('انحذفت'); go(b); },
     'del-tx'(d) { if (!confirm('تحذف العملية؟')) return; S.removeTx(d.id); toast('انحذفت'); go('#/money'); },
     'toggle-done'(d) {
       const it = S.getItem(d.id); if (!it) return;
       if (it.done) { it.done = false; it.doneAt = 0; S.putItem(it); }
       else { S.completeItem(d.id); toast('أحسنت!', 'ok'); }
-      if (d.back) go('#/tasks');
+      if (d.back) go(backFor(it));
       afterDone(S.getItem(d.id));
     },
     'ack-missed'(d) { const it = S.getItem(d.id); if (it) { it.missedAck = true; S.putItem(it); } },
@@ -838,6 +846,8 @@
       else S.snoozeItem(d.id, Date.now() + (+d.op) * 6e4);
     }
   };
+  if (SK.travel) Object.assign(actions, SK.travel.actions);
+  SK.ui = { I, $, $$, esc, chips, chipVal, toast, header, tabs, go, route, render: () => render() };
   function authErr(e) {
     const c = (e && e.code) || '';
     if (/wrong-password|invalid-credential|invalid-login/.test(c)) return 'الإيميل أو كلمة المرور غلط';
@@ -871,6 +881,7 @@
   window.addEventListener('hashchange', () => {
     const r = route();
     st.sheet = null;
+    if (SK.travel) SK.travel.onRoute(r);
     if ((r.name === 'task' || r.name === 'tx') && r.parts[1] === 'new') {
       st.mode = r.params.mode === 'manual' ? 'manual' : 'voice';
       st.voice = { text: '', listening: false, err: '', drafts: [] };
@@ -901,7 +912,7 @@
     if (kind === 'item' && doc && (doc.calEventId || calWanted(doc))) {
       try { if (exportToCal(doc)) S.putItem(doc, { silent: true }); } catch (e) { console.warn(e); }
     }
-    if (kind === 'item' || kind === 'tx' || kind === 'settings') SK.sync.push(kind, doc);
+    if (kind === 'item' || kind === 'tx' || kind === 'settings' || kind === 'trip') SK.sync.push(kind, doc);
     if (kind === 'item' || kind === 'remote' || kind === 'import') pushAlarms();
     if (kind === 'remote' || kind === 'settings') N.setConfig({ mapsKey: S.settings.mapsKey || '' });
     if (kind === 'remote' && isFormRoute()) return; // لا نمسح اللي تكتبه

@@ -61,6 +61,7 @@
         const batch = db.batch(); let n = 0;
         S.items.forEach(x => { batch.set(Y.col('items').doc(x.id), clean(x)); n++; });
         S.tx.forEach(x => { batch.set(Y.col('tx').doc(x.id), clean(x)); n++; });
+        (S.trips || []).forEach(x => { batch.set(Y.col('trips').doc(x.id), clean(x)); n++; });
         batch.set(Y.col('meta').doc('settings'), clean(S.settings));
         if (n < 450) batch.commit().then(() => localStorage.setItem(pushedKey, '1')).catch(e => console.warn(e));
         else { S.items.concat(S.tx).forEach(x => Y.push(S.items.includes(x) ? 'item' : 'tx', x)); localStorage.setItem(pushedKey, '1'); }
@@ -70,7 +71,7 @@
         snap.docChanges().forEach(ch => { if (ch.type !== 'removed' && S.mergeRemote(kind, ch.doc.data())) changed = true; });
         if (changed) { S.persist(); S.items.filter(i => i.done && i.repeat && i.repeat !== 'none' && !i.rolled && !i.deleted).forEach(i => S.rollRepeat(i)); S.emit('remote'); }
       }, e => { Y.state = 'error'; Y.error = e.message; SK.app && SK.app.render(); });
-      unsub.push(listen('items', 'item'), listen('tx', 'tx'));
+      unsub.push(listen('items', 'item'), listen('tx', 'tx'), listen('trips', 'trip'));
       unsub.push(Y.col('meta').doc('settings').onSnapshot(d => {
         const v = d.data(); if (v && (v.updatedAt || 0) > (S.settings.updatedAt || 0)) { Object.assign(S.settings, v); S.persist(); S.emit('remote'); }
       }));
@@ -79,7 +80,7 @@
     stop() { unsub.forEach(f => { try { f(); } catch (e) { } }); unsub = []; },
     push(kind, doc) {
       if (!user || !db || applyingRemote) return;
-      const name = kind === 'item' ? 'items' : kind === 'tx' ? 'tx' : null;
+      const name = kind === 'item' ? 'items' : kind === 'tx' ? 'tx' : kind === 'trip' ? 'trips' : null;
       if (kind === 'settings') { Y.col('meta').doc('settings').set(clean(doc)).catch(e => console.warn(e)); return; }
       if (name && doc && doc.id) Y.col(name).doc(doc.id).set(clean(doc)).catch(e => console.warn(e));
     }

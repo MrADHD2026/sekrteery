@@ -235,3 +235,32 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--teal); outl
 .custom-rep[hidden], [data-slot="repDays"][hidden] { display: none; }
 .rep-row { display: grid; grid-template-columns: auto 90px 1fr; gap: 8px; align-items: center; font-weight: 600; }
 .days-chips .chip { flex: 1 1 calc(25% - 8px); min-height: 40px; font-size: 13px; padding: 4px; }
+
+.seg { grid-template-columns: repeat(3, 1fr); }
+.trip-card { gap: 10px; }
+.trip-h { display: flex; gap: 10px; align-items: center; }
+.trip-h .grow { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.trip-h small, .trip-m { color: var(--muted); font-size: 13px; }
+.trip-icon { font-size: 26px; }
+.trip-card.done { opacity: .75; }
+.trip-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.trip-top .muted { flex: 1; }
+.subtabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.subtabs a { white-space: nowrap; padding: 9px 14px; border-radius: 999px; background: var(--chip); font-weight: 600; font-size: 14px; min-height: 40px; display: inline-flex; align-items: center; }
+.subtabs a.on { background: var(--dark); color: #fff; }
+.quick-add { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.settle-table { display: flex; flex-direction: column; font-size: 14px; }
+.st-h, .st-r { display: grid; grid-template-columns: 1.3fr 1fr 1fr 1fr; gap: 6px; padding: 8px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.st-h { color: var(--muted); font-size: 12px; font-weight: 600; }
+.settle-row { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.settle-row .grow { flex: 1; display: flex; flex-direction: column; }
+.settle-row small { color: var(--muted); }
+.members { display: flex; flex-direction: column; gap: 8px; }
+.member-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.member-row .btn-icon { margin: 0; }
+.split-inputs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.split-inputs[hidden] { display: none; }
+.split-in { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; }
+.split-in input { min-height: 44px; }
+
+.seg a { font-size: 14px; text-align: center; line-height: 1.25; padding: 0 4px; }

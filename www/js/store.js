@@ -44,7 +44,7 @@
   SK.KIND_NAMES = { expense: 'مصروف', income: 'دخل', deduction: 'خصم بنكي' };
 
   // ---------- التخزين ----------
-  const K = { items: 'sk_items', tx: 'sk_tx', settings: 'sk_settings' };
+  const K = { items: 'sk_items', tx: 'sk_tx', settings: 'sk_settings', trips: 'sk_trips' };
   function load(k, def) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; } catch (e) { return def; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { console.warn('save failed', e); } }
 
@@ -60,11 +60,12 @@
   const listeners = [];
   const S = SK.store = {
     items: load(K.items, []),
+    trips: load(K.trips, []),
     tx: load(K.tx, []),
     settings: Object.assign({}, DEFAULT_SETTINGS, load(K.settings, {})),
     onChange(fn) { listeners.push(fn); },
     emit(kind, doc) { listeners.forEach(fn => { try { fn(kind, doc); } catch (e) { console.error(e); } }); },
-    persist() { save(K.items, S.items); save(K.tx, S.tx); save(K.settings, S.settings); },
+    persist() { save(K.items, S.items); save(K.tx, S.tx); save(K.settings, S.settings); save(K.trips, S.trips); },
 
     // --- المواعيد والمهام
     activeItems() { return S.items.filter(i => !i.deleted); },
@@ -209,9 +210,27 @@
     category(id) { return S.settings.categories.find(c => c.id === id) || { id: 'other', name: 'أخرى', kind: 'expense' }; },
     putSettings(patch) { Object.assign(S.settings, patch); S.settings.updatedAt = Date.now(); S.persist(); S.emit('settings', S.settings); },
 
+    // --- السفر
+    activeTrips() { return S.trips.filter(t => !t.deleted); },
+    getTrip(id) { return S.trips.find(t => t.id === id); },
+    putTrip(t) {
+      t.updatedAt = Date.now();
+      if (!t.id) { t.id = U.uid(); t.createdAt = t.updatedAt; }
+      const i = S.trips.findIndex(x => x.id === t.id);
+      if (i >= 0) S.trips[i] = t; else S.trips.push(t);
+      S.persist(); S.emit('trip', t);
+      return t;
+    },
+    removeTrip(id) {
+      const t = S.getTrip(id); if (!t) return;
+      t.deleted = true; S.putTrip(t);
+      S.items.filter(i => i.tripId === id && !i.deleted).forEach(i => S.removeItem(i.id));
+    },
+    tripTx(id) { return S.activeTx().filter(t => t.tripId === id); },
+
     // ملخص فترة
     summary(from, to) {
-      const list = S.activeTx().filter(t => t.date >= from && t.date < to);
+      const list = S.activeTx().filter(t => !t.tripId && t.date >= from && t.date < to);
       let income = 0, out = 0; const byCat = {};
       list.forEach(t => {
         if (t.kind === 'income') income += t.sar;
@@ -222,17 +241,18 @@
 
     // --- المزامنة: دمج نسخة جاية من السحابة
     mergeRemote(kind, doc) {
-      const arr = kind === 'item' ? S.items : S.tx;
+      const arr = kind === 'item' ? S.items : kind === 'trip' ? S.trips : S.tx;
       const i = arr.findIndex(x => x.id === doc.id);
       if (i >= 0 && (arr[i].updatedAt || 0) >= (doc.updatedAt || 0)) return false;
       if (i >= 0) arr[i] = doc; else arr.push(doc);
       return true;
     },
-    exportAll() { return JSON.stringify({ v: 1, at: Date.now(), items: S.items, tx: S.tx, settings: S.settings }); },
+    exportAll() { return JSON.stringify({ v: 1, at: Date.now(), items: S.items, tx: S.tx, trips: S.trips, settings: S.settings }); },
     importAll(json) {
       const d = JSON.parse(json);
       (d.items || []).forEach(x => S.mergeRemote('item', x));
       (d.tx || []).forEach(x => S.mergeRemote('tx', x));
+      (d.trips || []).forEach(x => S.mergeRemote('trip', x));
       if (d.settings) Object.assign(S.settings, d.settings);
       S.persist(); S.emit('import');
     }

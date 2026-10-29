@@ -1,0 +1,58 @@
+import asyncio
+from playwright.async_api import async_playwright
+async def main():
+    async with async_playwright() as p:
+        b = await p.chromium.launch(); ctx = await b.new_context(viewport={'width':390,'height':844}, timezone_id='Asia/Riyadh')
+        pg = await ctx.new_page(); errs=[]; pg.on('pageerror', lambda e: errs.append(str(e)+str(e.stack)[:300]))
+        await pg.goto('http://localhost:8765/index.html#/travel'); await pg.wait_for_timeout(300)
+        await pg.screenshot(path='/home/claude/shots/t0.png')
+        await pg.click('a[href="#/trip/new"]'); await pg.wait_for_timeout(300)
+        await pg.fill('[name=name]','رحلة إسطنبول'); await pg.fill('[name=dest]','إسطنبول، تركيا')
+        await pg.select_option('[name=currency]','TRY'); await pg.fill('[name=budget]','5000')
+        for n in ['أحمد','خالد']:
+            await pg.click('[data-act=trip-add-member]'); ins = await pg.query_selector_all('[name=mname]'); await ins[-1].fill(n)
+        await pg.screenshot(path='/home/claude/shots/t1.png', full_page=True)
+        await pg.click('[data-act=trip-save]'); await pg.wait_for_timeout(300)
+        tid = await pg.evaluate("SK.store.activeTrips()[0].id")
+        # manual expense paid by ahmed equal
+        await pg.goto(f'http://localhost:8765/index.html#/trip/{tid}/tx/new'); await pg.wait_for_timeout(300)
+        await pg.fill('[name=amount]','900'); await pg.click('.chip[data-group=tcat][data-val=food]')
+        await pg.click('[data-act=ttx-payer][aria-pressed=true]')  # unselect me
+        ms = await pg.evaluate("SK.store.activeTrips()[0].members.map(m=>m.id)")
+        await pg.click(f'[data-act=ttx-payer][data-id="{ms[1]}"]')
+        await pg.screenshot(path='/home/claude/shots/t2.png', full_page=True)
+        await pg.click('[data-act=ttx-save]'); await pg.wait_for_timeout(300)
+        # custom split paid by me
+        await pg.goto(f'http://localhost:8765/index.html#/trip/{tid}/tx/new'); await pg.wait_for_timeout(300)
+        await pg.fill('[name=amount]','600'); await pg.click('.chip[data-group=tcat][data-val=hotel]')
+        await pg.click('.chip[data-group=smode][data-val=custom]'); await pg.wait_for_timeout(100)
+        await pg.fill(f'[data-custom="{ms[0]}"]','300'); await pg.fill(f'[data-custom="{ms[1]}"]','200'); await pg.fill(f'[data-custom="{ms[2]}"]','100')
+        await pg.click('[data-act=ttx-save]'); await pg.wait_for_timeout(300)
+        # advance khalid -> me 500 TRY
+        await pg.goto(f'http://localhost:8765/index.html#/trip/{tid}/tx/new?kind=transfer'); await pg.wait_for_timeout(300)
+        await pg.select_option('[name=from]', ms[2]); await pg.select_option('[name=to]', ms[0]); await pg.fill('[name=amount]','500')
+        await pg.click('[data-act=ttx-save]'); await pg.wait_for_timeout(300)
+        # voice
+        await pg.goto(f'http://localhost:8765/index.html#/trip/{tid}/tx/new?mode=voice'); await pg.wait_for_timeout(300)
+        await pg.fill('[name=tvtext]','خالد دفع التاكسي مية وخمسين، وتعشينا بثلاثمية')
+        await pg.click('[data-act=ttx-parse]'); await pg.wait_for_timeout(300)
+        await pg.screenshot(path='/home/claude/shots/t3.png', full_page=True)
+        await pg.click('[data-act=ttx-save-drafts]'); await pg.wait_for_timeout(300)
+        await pg.goto(f'http://localhost:8765/index.html#/trip/{tid}?tab=settle'); await pg.wait_for_timeout(300)
+        await pg.screenshot(path='/home/claude/shots/t4.png', full_page=True)
+        await pg.goto(f'http://localhost:8765/index.html#/trip/{tid}'); await pg.wait_for_timeout(300)
+        await pg.screenshot(path='/home/claude/shots/t5.png', full_page=True)
+        await pg.goto(f'http://localhost:8765/index.html#/trip/{tid}?tab=agenda'); await pg.wait_for_timeout(300)
+        await pg.click('text=✈️ طيران'); await pg.wait_for_timeout(300)
+        await pg.fill('[name=title]','رحلة SV263 جدة ← إسطنبول')
+        await pg.click('[data-act=save-manual]'); await pg.wait_for_timeout(300)
+        print('url after flight', pg.url)
+        await pg.screenshot(path='/home/claude/shots/t6.png', full_page=True)
+        await pg.goto('http://localhost:8765/index.html#/travel'); await pg.wait_for_timeout(300)
+        await pg.screenshot(path='/home/claude/shots/t7.png', full_page=True)
+        await pg.goto('http://localhost:8765/index.html#/money'); await pg.wait_for_timeout(300)
+        print('money line', await pg.evaluate("document.body.innerText.includes('مصاريف السفر')"))
+        st = await pg.evaluate("(()=>{const t=SK.store.activeTrips()[0]; const s=SK.travel._stats(t); return {bal:s.bal, settle:SK.travel._settle(s.bal), mine:s.mine,total:s.total}})()")
+        print(st)
+        print('errors', errs); await b.close()
+asyncio.run(main())
