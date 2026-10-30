@@ -15,7 +15,7 @@ public class ActionReceiver extends BroadcastReceiver {
         JSONObject a;
         try { a = new JSONObject(json); } catch (Exception e) { return; }
         AlarmActivity.stopIfShowing(a.optString("id"));
-        if ("DONE".equals(intent.getStringExtra("op"))) AlarmActions.done(c, a);
-        else AlarmActions.snooze(c, a, intent.getIntExtra("minutes", 10));
+        if ("DONE".equals(intent.getStringExtra("op"))) AlarmService.action(c, AlarmService.ACT_DONE, a, 0);
+        else AlarmService.action(c, AlarmService.ACT_SNOOZE, a, intent.getIntExtra("minutes", 10));
     }
 }

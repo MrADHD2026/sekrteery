@@ -32,30 +32,22 @@ public class AlarmReceiver extends BroadcastReceiver {
     }
 
     static void fire(Context c, JSONObject a) {
-        String key = a.optString("key");
-        AlarmStore.removeFollowKey(c, key);
+        AlarmStore.removeFollowKey(c, a.optString("key"));
         if ("normal".equals(a.optString("strength"))) {
             Notif.showNormal(c, a);
             return;
         }
-        PowerManager pm = (PowerManager) c.getSystemService(Context.POWER_SERVICE);
-        PowerManager.WakeLock wl = null;
-        if (pm != null) {
-            wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "sekrteery:alarm");
-            wl.acquire(10_000L);
-        }
-        NotificationManager nm = c.getSystemService(NotificationManager.class);
+        AlarmService.start(c, a);
+    }
+
+    /** احتياط لو النظام ما سمح بتشغيل خدمة المنبه. */
+    static void legacyFire(Context c, JSONObject a) {
+        Notif.showNormal(c, a);
         try {
-            if (nm != null) nm.notify(Notif.idFor(a.optString("id")), Notif.fullScreen(c, a));
-        } catch (SecurityException ignored) {}
-        // لو عنده صلاحية "الظهور فوق التطبيقات" نفتح الشاشة مباشرة حتى لو الجوال مفتوح ومستخدم
-        if (Settings.canDrawOverlays(c)) {
-            try {
-                Intent i = new Intent(c, AlarmActivity.class);
-                i.putExtra("alarm", a.toString());
-                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
-                c.startActivity(i);
-            } catch (Exception ignored) {}
-        }
+            Intent i = new Intent(c, AlarmActivity.class);
+            i.putExtra("alarm", a.toString());
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_USER_ACTION);
+            c.startActivity(i);
+        } catch (Exception ignored) {}
     }
 }
